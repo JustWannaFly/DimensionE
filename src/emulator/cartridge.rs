@@ -1,13 +1,12 @@
 use crate::bytes::combine_bytes;
 
-
 pub struct Cartridge {
     pub data: Vec<u8>,
-    pub header: CartridgeHeader
+    pub header: CartridgeHeader,
 }
 impl Cartridge {
     pub fn new(rom_data: Vec<u8>) -> Cartridge {
-        Cartridge { 
+        Cartridge {
             data: rom_data.clone(),
             header: CartridgeHeader::new(&rom_data),
         }
@@ -27,12 +26,19 @@ pub struct CartridgeHeader {
     pub old_liscensee_code: u8,
     pub rom_version: u8,
     pub header_checksum: u8,
-    pub global_checksum: u16
+    pub global_checksum: u16,
 }
 impl CartridgeHeader {
     pub fn new(header_data: &[u8]) -> CartridgeHeader {
         CartridgeHeader {
-            title: header_data.get(0x0134..=0x0142).unwrap().iter().map(|it| *it as char).collect::<Vec<char>>().try_into().unwrap(),
+            title: header_data
+                .get(0x0134..=0x0142)
+                .unwrap()
+                .iter()
+                .map(|it| *it as char)
+                .collect::<Vec<char>>()
+                .try_into()
+                .unwrap(),
             gbc_flag: header_data[0x0143],
             new_liscensee_code: combine_bytes(header_data[0x0144], header_data[0x0145]),
             sgb_flag: header_data[0x0146],
