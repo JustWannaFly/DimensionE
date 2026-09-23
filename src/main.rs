@@ -1,14 +1,14 @@
 use std::fs;
-use rom::Rom;
+use emulator::cartridge::Cartridge;
 
-mod rom;
+mod emulator;
+mod bytes;
 
 fn main() {
-    let rom =
-        Rom::new(fs::read("roms/zelda.sfc").expect("should be able to read a rom"));
-    let rom_header = rom.get_header();
-    dbg!(&rom_header);
-    let title: String = rom_header.title.iter().collect();
+    let cart =
+        Cartridge::new(fs::read("roms/The Legend of Zelda-Link's Awakening.gb").expect("should be able to read a rom"));
+    dbg!(&cart.header);
+    let title: String = cart.header.title.iter().collect();
     println!("successfully loaded Rom: [{}]", title)
 }
 
