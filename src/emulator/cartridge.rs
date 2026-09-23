@@ -7,8 +7,8 @@ pub struct Cartridge {
 impl Cartridge {
     pub fn new(rom_data: Vec<u8>) -> Cartridge {
         Cartridge {
-            data: rom_data.clone(),
             header: CartridgeHeader::new(&rom_data),
+            data: rom_data,
         }
     }
 }
