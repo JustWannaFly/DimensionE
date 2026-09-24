@@ -1,7 +1,7 @@
 use crate::bytes::combine_bytes;
 
 pub struct Cartridge {
-    pub data: Vec<u8>,
+    data: Vec<u8>,
     pub header: CartridgeHeader,
 }
 impl Cartridge {
@@ -10,6 +10,12 @@ impl Cartridge {
             header: CartridgeHeader::new(&rom_data),
             data: rom_data,
         }
+    }
+    pub fn read8(&self, addr: usize) -> u8 {
+        self.data[addr]
+    }
+    pub fn read16(&self, addr: usize) -> u16 {
+        combine_bytes(self.data[addr], self.data[addr + 1])
     }
 }
 
