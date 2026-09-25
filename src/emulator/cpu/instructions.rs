@@ -1,4 +1,3 @@
-
 pub enum CPURegister {
     AF,
     Accumulator,
@@ -13,26 +12,36 @@ pub enum CPURegister {
     H,
     L,
     StackPointer,
-    ProgramCounter
+    ProgramCounter,
 }
 
 pub enum Operation {
     NOP,
-    ImmLD16{reg: CPURegister},
-    LD16{dest: CPURegister, src: CPURegister},
-    
+    LD16Imm { reg: CPURegister },
+    ADD16 { reg: CPURegister },
     JP,
 }
 
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
         0x00 => Operation::NOP,
-        0x01 => Operation::ImmLD16 { reg: CPURegister::BC },
-        0x11 => Operation::ImmLD16 { reg: CPURegister::DE },
-        0x21 => Operation::ImmLD16 { reg: CPURegister::HL },
-        0x31 => Operation::ImmLD16 { reg: CPURegister::StackPointer },
+        0x01 => Operation::LD16Imm {
+            reg: CPURegister::BC,
+        },
+        0x11 => Operation::LD16Imm {
+            reg: CPURegister::DE,
+        },
+        0x19 => Operation::ADD16 {
+            reg: CPURegister::DE,
+        },
+        0x21 => Operation::LD16Imm {
+            reg: CPURegister::HL,
+        },
+        0x31 => Operation::LD16Imm {
+            reg: CPURegister::StackPointer,
+        },
 
         0xC3 => Operation::JP,
-        _ => panic!("Unsupported opcode: [{:X}]", opcode)
+        _ => panic!("Unsupported opcode: [{:X}]", opcode),
     }
 }

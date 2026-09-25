@@ -1,6 +1,11 @@
-use crate::emulator::{
-    cartridge::Cartridge, cpu::instructions::{
-        CPURegister::{self, Accumulator, Flags, ProgramCounter}, Operation, lookup_opcode,
+use crate::{
+    bytes::{build_flag_byte, is_carry16, is_half_carry16},
+    emulator::{
+        cartridge::Cartridge,
+        cpu::instructions::{
+            CPURegister::{self, Accumulator, Flags, ProgramCounter},
+            Operation, lookup_opcode,
+        },
     },
 };
 
@@ -69,8 +74,27 @@ impl CPU<'_> {
             _ => panic!("Tried to set 16 bits to 8 bit register"),
         }
     }
+    fn get_register_ref(&self, reg: CPURegister) -> &Register {
+        match reg {
+            CPURegister::AF => &self.acc_flags,
+            CPURegister::Accumulator => &self.acc_flags,
+            CPURegister::Flags => &self.acc_flags,
+            CPURegister::BC => &self.reg_bc,
+            CPURegister::B => &self.reg_bc,
+            CPURegister::C => &self.reg_bc,
+            CPURegister::DE => &self.reg_de,
+            CPURegister::D => &self.reg_de,
+            CPURegister::E => &self.reg_de,
+            CPURegister::HL => &self.reg_hl,
+            CPURegister::H => &self.reg_hl,
+            CPURegister::L => &self.reg_hl,
+            CPURegister::StackPointer => &self.stack_pointer,
+            CPURegister::ProgramCounter => &self.program_counter,
+        }
+    }
     pub fn read_imm16(&self) -> u16 {
-        self.cart.read16((self.program_counter.get16() + 1) as usize)
+        self.cart
+            .read16((self.program_counter.get16() + 1) as usize)
     }
     pub fn execute_operation(&mut self) {
         let op_length: u16;
@@ -83,10 +107,25 @@ impl CPU<'_> {
                 op_length = 1;
                 _op_time = 4;
             }
-            Operation::ImmLD16 { reg } => {
+            Operation::LD16Imm { reg } => {
                 op_length = 3;
                 _op_time = 12;
                 self.set_register16(reg, self.read_imm16());
+            }
+            Operation::ADD16 { reg } => {
+                op_length = 1;
+                _op_time = 8;
+                let hl_val = self.reg_hl.get16();
+                let val2 = self.get_register_ref(reg).get16();
+                self.reg_hl.set16(hl_val + val2);
+
+                self.acc_flags.low = build_flag_byte(
+                    self.acc_flags.low,
+                    None,
+                    Some(false),
+                    Some(is_half_carry16(hl_val, val2)),
+                    Some(is_carry16(hl_val, val2)),
+                );
             }
             Operation::JP => {
                 op_length = 0;
@@ -94,6 +133,7 @@ impl CPU<'_> {
                 self.set_register16(ProgramCounter, self.read_imm16());
             }
         }
-        self.program_counter.set16(self.program_counter.get16() + op_length);
+        self.program_counter
+            .set16(self.program_counter.get16() + op_length);
     }
 }
