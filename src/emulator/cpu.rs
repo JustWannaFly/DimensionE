@@ -3,7 +3,7 @@ use crate::{
     emulator::{
         cartridge::Cartridge,
         cpu::instructions::{
-            CPURegister::{self, Accumulator, Flags, ProgramCounter},
+            CPURegister,
             Operation, lookup_opcode,
         },
     },
@@ -130,7 +130,7 @@ impl CPU<'_> {
             Operation::JP => {
                 op_length = 0;
                 _op_time = 16;
-                self.set_register16(ProgramCounter, self.read_imm16());
+                self.set_register16(CPURegister::ProgramCounter, self.read_imm16());
             }
         }
         self.program_counter
