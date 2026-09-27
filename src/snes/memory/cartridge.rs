@@ -59,15 +59,29 @@ impl MapMode {
     }
 }
 
+fn is_valid_title(title_chars: &[u8]) -> bool {
+    let mut is_valid = true;
+    let title_char_low: u8 = 0x20;
+    let title_char_high: u8 = 0x7E;
+    title_chars.iter().for_each(|char| {
+        if title_char_low > *char || *char > title_char_high {
+            is_valid = false
+        }
+    });
+    is_valid
+}
+
+// TODO add handling/detection for roms with a copy tool header added
 fn build_header(raw_data: &Vec<u8>) -> RomHeader {
     let low_rom_header_start = 0x7FC0;
     let high_rom_header_start = 0xFFC0;
     let ex_high_rom_header_start = 0x40FFC0;
     let header_length = 32;
-    dbg!(header_length);
+    // TODO verify only 3 possible header locations
     let low_header = raw_data.get(low_rom_header_start..low_rom_header_start + header_length);
     let high_header = raw_data.get(high_rom_header_start..high_rom_header_start + header_length);
-    let ex_high_header = raw_data.get(ex_high_rom_header_start..ex_high_rom_header_start + header_length);
+    let ex_high_header =
+        raw_data.get(ex_high_rom_header_start..ex_high_rom_header_start + header_length);
     let header_data: &[u8];
     let low_flag = match low_header {
         Some(header_data) => header_data[21],
@@ -77,14 +91,23 @@ fn build_header(raw_data: &Vec<u8>) -> RomHeader {
         Some(header_data) => header_data[21],
         None => 0,
     };
-    // let ex_high_flag = match ex_high_header {
-    //     Some(header_data) => header_data[21],
-    //     None => 0,
-    // };
-    // TODO make rom mapping detection more robust
-    if low_flag == 0b0010_0000 || low_flag == 0b0011_0000 {
+    if (low_flag == 0b0010_0000 || low_flag == 0b0011_0000)
+        && is_valid_title(
+            low_header
+                .unwrap()
+                .get(0..21)
+                .expect("expected low_header title chars to exist"),
+        )
+    {
         header_data = low_header.unwrap()
-    } else if high_flag == 0b0010_0001 || high_flag == 0b0011_0001 {
+    } else if (high_flag == 0b0010_0001 || high_flag == 0b0011_0001)
+        && is_valid_title(
+            high_header
+                .unwrap()
+                .get(0..21)
+                .expect("expected high_header title chars to exist"),
+        )
+    {
         header_data = high_header.unwrap();
     } else {
         header_data = ex_high_header.unwrap()
@@ -116,8 +139,25 @@ impl Cartridge {
             bytes,
         }
     }
-    pub fn read(&self, _bank: u8, address: u16, length: u8) -> Option<&[u8]> {
-        // TODO implement mapping from snes address to rom location before lookup
-        self.bytes.get(address as usize..(address as usize + length as usize))
+    pub fn read(&self, bank: u8, address: u16, length: u8) -> Option<&[u8]> {
+        let location: usize;
+        match self.header.map_mode {
+            LoRom => location = lo_rom_lookup(bank, address),
+            _ => {
+                dbg!(&self.header);
+                panic!("Cartridge mapping not implemented");
+            }
+        }
+        self.bytes.get(location..(location + length as usize))
     }
+}
+
+fn lo_rom_lookup(bank: u8, address: u16) -> usize {
+    let bank_size:usize = 0x8000;
+    let bank_to_access = if bank < 0x80 {bank} else {bank - 0x80};
+    let bank_offset = bank_to_access as usize * bank_size;
+    
+    let mut address_offset = address as usize;
+    if address_offset >= bank_size { address_offset -= bank_size; }
+    bank_offset + address_offset
 }
