@@ -8,6 +8,9 @@ fn main() {
             .expect("should be able to read a rom"),
     );
     let title: String = cart.header.title.iter().collect();
-    println!("successfully loaded Rom: [{}]", title);
-
+    println!("successfully read Rom: [{}]", title);
+    println!("starting memory load...");
+    let mut memory_controller = snes::memory::MemoryController::new();
+    memory_controller.load_cart(&cart);
+    println!("Cartridge loading complete");
 }

@@ -130,16 +130,23 @@ impl Cartridge {
             bytes,
         }
     }
-    pub fn read(&self, bank: u8, address: u16, length: u8) -> &[u8] {
-        let location: usize;
+    pub fn _read(&self, bank: u8, start_address: u16, end_address: u16) -> &[u8] {
+        let start_location: usize;
+        let end_location: usize;
         match self.header.map_mode {
-            LoRom => location = lo_rom_lookup(bank, address),
+            LoRom => {
+                start_location = lo_rom_lookup(bank, start_address);
+                end_location = lo_rom_lookup(bank, end_address);
+            }
             _ => {
                 dbg!(&self.header);
                 panic!("Cartridge mapping not implemented");
             }
         }
-        self.bytes.get(location..(location + length as usize)).expect("Rom data should be here")
+        self.bytes.get(start_location..=end_location).expect("Rom data should be here")
+    }
+    pub fn read_byte(&self, bank: u8, address: u16) -> u8 {
+       return *self.bytes.get(lo_rom_lookup(bank, address)).expect("Rom should have data at lo_Rom addresses")
     }
 }
 
@@ -153,4 +160,38 @@ fn lo_rom_lookup(bank: u8, address: u16) -> usize {
         address_offset -= bank_size;
     }
     bank_offset + address_offset
+}
+
+#[cfg(test)]
+mod cartridge_tests {
+    use super::lo_rom_lookup;
+
+    #[test]
+    fn lo_rom_lookup_test() {
+        // banks $00-$3F
+        assert_eq!(0x00_0000, lo_rom_lookup(0x00, 0x8000));
+        assert_eq!(0x00_7FFF, lo_rom_lookup(0x00, 0xFFFF));
+        assert_eq!(0x1F_8000, lo_rom_lookup(0x3F, 0x8000));
+        assert_eq!(0x1F_FFFF, lo_rom_lookup(0x3F, 0xFFFF));
+        // banks $40-$6F
+        assert_eq!(0x20_0000, lo_rom_lookup(0x40, 0x0000));
+        assert_eq!(0x20_7FFF, lo_rom_lookup(0x40, 0x7FFF));
+        assert_eq!(0x37_8000, lo_rom_lookup(0x6F, 0x0000));
+        assert_eq!(0x37_FFFF, lo_rom_lookup(0x6F, 0x7FFF));
+
+        assert_eq!(0x20_0000, lo_rom_lookup(0x40, 0x8000));
+        assert_eq!(0x20_7FFF, lo_rom_lookup(0x40, 0xFFFF));
+        assert_eq!(0x37_8000, lo_rom_lookup(0x6F, 0x8000));
+        assert_eq!(0x37_FFFF, lo_rom_lookup(0x6F, 0xFFFF));
+        // banks $70-$7D
+        assert_eq!(0x38_0000, lo_rom_lookup(0x70, 0x8000));
+        assert_eq!(0x38_7FFF, lo_rom_lookup(0x70, 0xFFFF));
+        assert_eq!(0x3E_8000, lo_rom_lookup(0x7D, 0x8000));
+        assert_eq!(0x3E_FFFF, lo_rom_lookup(0x7D, 0xFFFF));
+        // banks $FE-$FF
+        assert_eq!(0x3F_0000, lo_rom_lookup(0xFE, 0x8000));
+        assert_eq!(0x3F_7FFF, lo_rom_lookup(0xFE, 0xFFFF));
+        assert_eq!(0x3F_8000, lo_rom_lookup(0xFF, 0x8000));
+        assert_eq!(0x3F_FFFF, lo_rom_lookup(0xFF, 0xFFFF));
+    }
 }

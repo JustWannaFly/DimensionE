@@ -3,10 +3,11 @@ use crate::snes::memory::cartridge::Cartridge;
 pub mod cartridge;
 
 #[derive(Debug)]
+#[derive(Clone, Copy)]
 pub enum MemorySpeed {
     Fast,
     Slow,
-    XSlow,
+    _XSlow,
 }
 
 pub struct MemoryController {
@@ -21,12 +22,21 @@ impl MemoryController {
         MemoryController {
             cart_loaded: false,
             cart_speed: MemorySpeed::Slow,
-            memory_data: vec![vec![0; 0xFFFF]; 0xFF],
+            memory_data: vec![vec![0; 0xFFFF + 1]; 0xFF + 1],
         }
     }
     pub fn load_cart(&mut self, cartridge: &Cartridge) {
         // TODO write all the cartridge data into memory_data
-        self.cart_speed = MemorySpeed::Fast;
+        self.cart_speed = cartridge.header.speed;
+
+        // TODO there is definitely a better way to do this. If loading a rom is slow, this is probably it.
+        for bank in 0x00..=0x3F as u8 {
+            for address in 0x8000..=0xFFFF as u16 {
+                println!("loading {:x}:{:x}", bank, address);
+                self.memory_data[bank as usize][address as usize] = cartridge.read_byte(bank, address);
+            }
+        }
+
         self.cart_loaded = true;
     }
     pub fn unload_cart(&mut self) {
