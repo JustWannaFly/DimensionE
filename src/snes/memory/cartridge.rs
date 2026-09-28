@@ -9,7 +9,7 @@ pub struct Cartridge {
 #[derive(Debug)]
 pub struct RomHeader {
     pub title: Vec<char>,
-    pub speed: Speed,
+    pub speed: super::MemorySpeed,
     pub map_mode: MapMode,
     pub chipset: u8,
     pub rom_size: u8,
@@ -21,18 +21,11 @@ pub struct RomHeader {
     pub checksum: u16,
 }
 
-#[derive(Debug)]
-pub enum Speed {
-    Slow,
-    Fast,
-}
-impl Speed {
-    pub fn get_speed(header_byte: u8) -> Speed {
-        if header_byte & 0b0001_0000 == 0 {
-            Speed::Slow
-        } else {
-            Speed::Fast
-        }
+fn get_speed(header_byte: u8) -> super::MemorySpeed {
+    if header_byte & 0b0001_0000 == 0 {
+        super::MemorySpeed::Slow
+    } else {
+        super::MemorySpeed::Fast
     }
 }
 
@@ -45,17 +38,15 @@ pub enum MapMode {
     ExHiRom,
     SPC7110,
 }
-impl MapMode {
-    pub fn get_map_mode(header_byte: u8) -> MapMode {
-        match header_byte & 0b0000_1111 {
-            0 => LoRom,
-            1 => HiRom,
-            2 => SDD1,
-            3 => SA1,
-            5 => ExHiRom,
-            0xA => SPC7110,
-            _ => panic!("Mapping mode did not match known mapping"),
-        }
+fn get_map_mode(header_byte: u8) -> MapMode {
+    match header_byte & 0b0000_1111 {
+        0 => LoRom,
+        1 => HiRom,
+        2 => SDD1,
+        3 => SA1,
+        5 => ExHiRom,
+        0xA => SPC7110,
+        _ => panic!("Mapping mode did not match known mapping"),
     }
 }
 
@@ -119,8 +110,8 @@ fn build_header(raw_data: &Vec<u8>) -> RomHeader {
             .iter()
             .map(|it| *it as char)
             .collect(),
-        speed: Speed::get_speed(header_data[21]),
-        map_mode: MapMode::get_map_mode(header_data[21]),
+        speed: get_speed(header_data[21]),
+        map_mode: get_map_mode(header_data[21]),
         chipset: header_data[22],
         rom_size: header_data[23],
         ram_size: header_data[24],
@@ -139,7 +130,7 @@ impl Cartridge {
             bytes,
         }
     }
-    pub fn read(&self, bank: u8, address: u16, length: u8) -> Option<&[u8]> {
+    pub fn read(&self, bank: u8, address: u16, length: u8) -> &[u8] {
         let location: usize;
         match self.header.map_mode {
             LoRom => location = lo_rom_lookup(bank, address),
@@ -148,16 +139,18 @@ impl Cartridge {
                 panic!("Cartridge mapping not implemented");
             }
         }
-        self.bytes.get(location..(location + length as usize))
+        self.bytes.get(location..(location + length as usize)).expect("Rom data should be here")
     }
 }
 
 fn lo_rom_lookup(bank: u8, address: u16) -> usize {
-    let bank_size:usize = 0x8000;
-    let bank_to_access = if bank < 0x80 {bank} else {bank - 0x80};
+    let bank_size: usize = 0x8000;
+    let bank_to_access = if bank < 0x80 { bank } else { bank - 0x80 };
     let bank_offset = bank_to_access as usize * bank_size;
-    
+
     let mut address_offset = address as usize;
-    if address_offset >= bank_size { address_offset -= bank_size; }
+    if address_offset >= bank_size {
+        address_offset -= bank_size;
+    }
     bank_offset + address_offset
 }
