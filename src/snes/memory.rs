@@ -27,12 +27,10 @@ impl MemoryController {
         }
     }
     pub fn load_cart(&mut self, cartridge: &Cartridge) {
-        // TODO write all the cartridge data into memory_data
         self.cart_speed = cartridge.header.speed;
         self.reset_vector = ((cartridge.read_byte(0x00, 0xFFFD).unwrap() as u16) << 8)
             + cartridge.read_byte(0x00, 0xFFFC).unwrap() as u16;
 
-        // TODO there is definitely a better way to do this. If loading a rom is slow, this is probably it.
         for bank in 0x00..=0x3F as u8 {
             for address in 0x8000..=0xFFFF as u16 {
                 match cartridge.read_byte(bank, address) {
@@ -45,7 +43,7 @@ impl MemoryController {
 
         self.cart_loaded = true;
     }
-    pub fn unload_cart(&mut self) {
+    pub fn _unload_cart(&mut self) {
         self.cart_loaded = false;
     }
     pub fn read(&mut self, bank: u8, address: u16, length: u8) -> Vec<u8> {
