@@ -2,8 +2,7 @@ use crate::snes::memory::cartridge::Cartridge;
 
 pub mod cartridge;
 
-#[derive(Debug)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum MemorySpeed {
     Fast,
     Slow,
@@ -14,6 +13,7 @@ pub struct MemoryController {
     cart_loaded: bool,
     cart_speed: MemorySpeed,
     memory_data: Vec<Vec<u8>>,
+    reset_vector: u16,
 }
 
 /// Currently mirrored data is simply stored multiple times rather than aliased.
@@ -23,27 +23,29 @@ impl MemoryController {
             cart_loaded: false,
             cart_speed: MemorySpeed::Slow,
             memory_data: vec![vec![0; 0xFFFF + 1]; 0xFF + 1],
+            reset_vector: 0x0000,
         }
     }
     pub fn load_cart(&mut self, cartridge: &Cartridge) {
         // TODO write all the cartridge data into memory_data
         self.cart_speed = cartridge.header.speed;
+        self.reset_vector = ((cartridge.read_byte(0x00, 0xFFFD).unwrap() as u16) << 8)
+            + cartridge.read_byte(0x00, 0xFFFC).unwrap() as u16;
 
         // TODO there is definitely a better way to do this. If loading a rom is slow, this is probably it.
         for bank in 0x00..=0x3F as u8 {
             for address in 0x8000..=0xFFFF as u16 {
-                match cartridge.read_byte(bank, address){
+                match cartridge.read_byte(bank, address) {
                     Some(byte) => self.memory_data[bank as usize][address as usize] = byte,
-                    _ => ()
+                    _ => (),
                 }
-                 cartridge.read_byte(bank, address);
+                cartridge.read_byte(bank, address);
             }
         }
 
         self.cart_loaded = true;
     }
     pub fn unload_cart(&mut self) {
-        
         self.cart_loaded = false;
     }
     pub fn read(&mut self, bank: u8, address: u16, length: u8) -> Vec<u8> {
@@ -68,8 +70,9 @@ impl MemoryController {
     }
     fn write_mirrors(&mut self, bank: u8, address: u16, byte: &u8) {
         if (bank <= 0x3F && address <= 0x1FFF)
-        || (bank == 0x7E && address <= 0x1FFF)
-        || (0x80 <= bank && bank <= 0xBF && address <= 0x1FFF) {
+            || (bank == 0x7E && address <= 0x1FFF)
+            || (0x80 <= bank && bank <= 0xBF && address <= 0x1FFF)
+        {
             for bank in 0x00..=0x3F {
                 self.memory_data[bank][address as usize] = *byte;
             }
