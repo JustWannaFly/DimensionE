@@ -13,4 +13,6 @@ fn main() {
     let mut memory_controller = snes::memory::MemoryController::new();
     memory_controller.load_cart(&cart);
     println!("Cartridge loading complete");
+    let mem_title: String = memory_controller.read(0, 0xFFC0, 21).iter().map(|f| {*f as char}).collect();
+    println!("loading random byte: [{}]", mem_title);
 }

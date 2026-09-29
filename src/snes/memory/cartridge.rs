@@ -145,8 +145,8 @@ impl Cartridge {
         }
         self.bytes.get(start_location..=end_location).expect("Rom data should be here")
     }
-    pub fn read_byte(&self, bank: u8, address: u16) -> u8 {
-       return *self.bytes.get(lo_rom_lookup(bank, address)).expect("Rom should have data at lo_Rom addresses")
+    pub fn read_byte(&self, bank: u8, address: u16) -> Option<u8> {
+       return self.bytes.get(lo_rom_lookup(bank, address)).copied()
     }
 }
 

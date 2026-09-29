@@ -32,8 +32,11 @@ impl MemoryController {
         // TODO there is definitely a better way to do this. If loading a rom is slow, this is probably it.
         for bank in 0x00..=0x3F as u8 {
             for address in 0x8000..=0xFFFF as u16 {
-                println!("loading {:x}:{:x}", bank, address);
-                self.memory_data[bank as usize][address as usize] = cartridge.read_byte(bank, address);
+                match cartridge.read_byte(bank, address){
+                    Some(byte) => self.memory_data[bank as usize][address as usize] = byte,
+                    _ => ()
+                }
+                 cartridge.read_byte(bank, address);
             }
         }
 
@@ -43,7 +46,7 @@ impl MemoryController {
         
         self.cart_loaded = false;
     }
-    pub fn _read(&mut self, bank: u8, address: u16, length: u8) -> Vec<u8> {
+    pub fn read(&mut self, bank: u8, address: u16, length: u8) -> Vec<u8> {
         // TODO implement timing logic
         let bank = self.memory_data.get(bank as usize).unwrap();
         let mut result = vec![];
