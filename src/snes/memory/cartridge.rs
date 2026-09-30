@@ -8,17 +8,17 @@ pub struct Cartridge {
 }
 #[derive(Debug)]
 pub struct RomHeader {
-    pub title: Vec<char>,
+    pub _title: Vec<char>,
     pub speed: super::MemorySpeed,
     pub map_mode: MapMode,
-    pub chipset: u8,
-    pub rom_size: u8,
-    pub ram_size: u8,
-    pub country_code: u8,
-    pub developer_id: u8,
-    pub rom_version: u8,
-    pub checksum_compliment: u16,
-    pub checksum: u16,
+    pub _chipset: u8,
+    pub _rom_size: u8,
+    pub _ram_size: u8,
+    pub _country_code: u8,
+    pub _developer_id: u8,
+    pub _rom_version: u8,
+    pub _checksum_compliment: u16,
+    pub _checksum: u16,
 }
 
 fn get_speed(header_byte: u8) -> super::MemorySpeed {
@@ -104,7 +104,7 @@ fn build_header(raw_data: &Vec<u8>) -> RomHeader {
         header_data = ex_high_header.unwrap()
     }
     RomHeader {
-        title: header_data
+        _title: header_data
             .get(0..21)
             .unwrap()
             .iter()
@@ -112,14 +112,14 @@ fn build_header(raw_data: &Vec<u8>) -> RomHeader {
             .collect(),
         speed: get_speed(header_data[21]),
         map_mode: get_map_mode(header_data[21]),
-        chipset: header_data[22],
-        rom_size: header_data[23],
-        ram_size: header_data[24],
-        country_code: header_data[25],
-        developer_id: header_data[26],
-        rom_version: header_data[27],
-        checksum_compliment: ((header_data[28] as u16) << 8) | header_data[29] as u16,
-        checksum: ((header_data[30] as u16) << 8) | header_data[31] as u16,
+        _chipset: header_data[22],
+        _rom_size: header_data[23],
+        _ram_size: header_data[24],
+        _country_code: header_data[25],
+        _developer_id: header_data[26],
+        _rom_version: header_data[27],
+        _checksum_compliment: ((header_data[28] as u16) << 8) | header_data[29] as u16,
+        _checksum: ((header_data[30] as u16) << 8) | header_data[31] as u16,
     }
 }
 
@@ -130,23 +130,18 @@ impl Cartridge {
             bytes,
         }
     }
-    pub fn _read(&self, bank: u8, start_address: u16, end_address: u16) -> &[u8] {
-        let start_location: usize;
-        let end_location: usize;
+    pub fn read_byte(&self, bank: u8, address: u16) -> Option<u8> {
+        let location;
         match self.header.map_mode {
             LoRom => {
-                start_location = lo_rom_lookup(bank, start_address);
-                end_location = lo_rom_lookup(bank, end_address);
+                location = lo_rom_lookup(bank, address);
             }
             _ => {
                 dbg!(&self.header);
                 panic!("Cartridge mapping not implemented");
             }
         }
-        self.bytes.get(start_location..=end_location).expect("Rom data should be here")
-    }
-    pub fn read_byte(&self, bank: u8, address: u16) -> Option<u8> {
-       return self.bytes.get(lo_rom_lookup(bank, address)).copied()
+       return self.bytes.get(location).copied()
     }
 }
 
