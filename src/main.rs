@@ -4,7 +4,7 @@ mod snes;
 mod bytes;
 fn main() {
     let cart = snes::memory::cartridge::Cartridge::new(
-        fs::read("roms/Super Metroid.sfc")
+        fs::read("roms/Chrono Trigger.sfc")
             .expect("should be able to read a rom"),
     );
     println!("starting memory load...");

@@ -136,12 +136,15 @@ impl Cartridge {
             LoRom => {
                 location = lo_rom_lookup(bank, address);
             }
+            HiRom => {
+                location = high_rom_lookup(bank, address);
+            }
             _ => {
                 dbg!(&self.header);
                 panic!("Cartridge mapping not implemented");
             }
         }
-       return self.bytes.get(location).copied()
+        return self.bytes.get(location).copied();
     }
 }
 
@@ -157,9 +160,19 @@ fn lo_rom_lookup(bank: u8, address: u16) -> usize {
     bank_offset + address_offset
 }
 
+fn high_rom_lookup(bank: u8, address: u16) -> usize {
+    let bank_offset;
+    match bank {
+        0x40..=0x7D => bank_offset = bank - 0x40,
+        0xFE..=0xFF => bank_offset = bank - 0xC0,
+        _ => bank_offset = bank,
+    }
+    ((bank_offset as usize) << 16) + (address as usize)
+}
+
 #[cfg(test)]
 mod cartridge_tests {
-    use super::lo_rom_lookup;
+    use super::{high_rom_lookup, lo_rom_lookup};
 
     #[test]
     fn lo_rom_lookup_test() {
@@ -188,5 +201,24 @@ mod cartridge_tests {
         assert_eq!(0x3F_7FFF, lo_rom_lookup(0xFE, 0xFFFF));
         assert_eq!(0x3F_8000, lo_rom_lookup(0xFF, 0x8000));
         assert_eq!(0x3F_FFFF, lo_rom_lookup(0xFF, 0xFFFF));
+    }
+
+    #[test]
+    fn high_rom_lookup_test() {
+        // banks $00-$3F
+        assert_eq!(0x00_8000, high_rom_lookup(0x00, 0x8000));
+        assert_eq!(0x00_FFFF, high_rom_lookup(0x00, 0xFFFF));
+        assert_eq!(0x3F_8000, high_rom_lookup(0x3F, 0x8000));
+        assert_eq!(0x3F_FFFF, high_rom_lookup(0x3F, 0xFFFF));
+        // banks $40-$7D
+        assert_eq!(0x00_0000, high_rom_lookup(0x40, 0x0000));
+        assert_eq!(0x00_FFFF, high_rom_lookup(0x40, 0xFFFF));
+        assert_eq!(0x3D_0000, high_rom_lookup(0x7D, 0x0000));
+        assert_eq!(0x3D_FFFF, high_rom_lookup(0x7D, 0xFFFF));
+        // banks $FE-$FF
+        assert_eq!(0x3E_0000, high_rom_lookup(0xFE, 0x0000));
+        assert_eq!(0x3E_FFFF, high_rom_lookup(0xFE, 0xFFFF));
+        assert_eq!(0x3F_0000, high_rom_lookup(0xFF, 0x0000));
+        assert_eq!(0x3F_FFFF, high_rom_lookup(0xFF, 0xFFFF));
     }
 }
