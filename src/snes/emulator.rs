@@ -12,5 +12,8 @@ pub mod emulator {
                 cpu: CPU::new()
             }
         }
+        pub fn tick(&mut self) {
+            self.cpu.execute_instruction(&mut self.memory_controller);
+        }
     }
 }

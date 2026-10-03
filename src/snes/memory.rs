@@ -57,6 +57,10 @@ impl MemoryController {
         }
         result
     }
+    pub fn read_byte(&mut self, bank: u8, address: u16) -> u8 {
+        let bank = self.memory_data.get(bank as usize).unwrap();
+        *(&bank[address as usize])
+    }
     pub fn write(&mut self, bank: u8, address: u16, bytes: Vec<u8>) {
         // TODO implement timing logic
         let mut index = address;

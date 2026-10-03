@@ -13,6 +13,9 @@ fn main() {
     emulator.memory_controller.load_cart(&cart);
     let title_bytes = emulator.memory_controller.read(0, 0xFFC0, 21);
     println!("Rom Load check:: Title: [{}]", build_string(&title_bytes));
+    loop {
+        emulator.tick();
+    }
 
 }
 

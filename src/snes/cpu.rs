@@ -1,3 +1,11 @@
+use crate::snes::memory::MemoryController;
+
+mod instrusctions;
+use instrusctions::{
+    Operation,
+    lookup_opcode,
+};
+
 pub struct CPU {
     accumulator: u16,
     x: u16,
@@ -23,6 +31,13 @@ impl CPU {
             program_bank: 0x0000,
             program_counter: 0x0000_0000,
         }
+    }
+    pub fn initialize(&mut self, program_start: u16) {
+        self.program_counter = program_start
+    }
+    /// This will probably need to be broken out when implementing timing
+    pub fn execute_instruction(&mut self, memory_controller: &mut MemoryController) {
+        let operation = lookup_opcode(memory_controller.read_byte(self.data_bank, self.program_counter));
     }
 }
 
