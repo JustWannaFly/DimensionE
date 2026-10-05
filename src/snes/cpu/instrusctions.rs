@@ -1,5 +1,7 @@
+use crate::snes::cpu::instrusctions::AddressMode::{AbsoluteLong, DirectPage};
+
 pub enum Operation {
-    ADC, // Add with Carry
+    ADC(OpDetails), // Add with Carry
     AND, // And Accumulator with Memory
     ASL, // Arithmetic Shift Left
     // Branches, //
@@ -37,7 +39,7 @@ pub enum Operation {
     INC, // Increment
     INX,
     INY, // Increment Index Registers
-    JMP, // Jump
+    JMP(OpDetails), // Jump
     JML, // Jump
     JSR, // Jump to Subroutine
     JSL, // Jump to Subroutine
@@ -113,8 +115,27 @@ pub enum Operation {
     XCE, // Exchange Carry and Emulation Bits
 }
 
+pub enum AddressMode {
+    AbsoluteLong,
+    DirectPage,
+}
+
+pub struct OpDetails {
+    pub arg_length: u8,
+    pub address_mode: AddressMode
+}
+
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
+        0x00 => Operation::NOP,
+        0x18 => Operation::CLC,
+        0x58 => Operation::CLI,
+        0x5C => Operation::JMP(OpDetails{arg_length: 3, address_mode: AbsoluteLong}),
+        0x65 => Operation::ADC(OpDetails{arg_length: 1, address_mode: DirectPage}),
+        0x78 => Operation::SEI,
+        0xB8 => Operation::CLV,
+        0xD8 => Operation::CLD,
+        0xFB => Operation::XCE,
         _ => panic!("Unsupported opcode: [{:X}]", opcode),
     }
 }
