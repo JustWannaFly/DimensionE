@@ -46,7 +46,7 @@ impl MemoryController {
     pub fn _unload_cart(&mut self) {
         self.cart_loaded = false;
     }
-    pub fn read(&self, bank: u8, address: u16, length: u8) -> Vec<u8> {
+    pub fn read(&self, bank: u8, address: u16, length: u16) -> Vec<u8> {
         // TODO implement timing logic
         let bank = self.memory_data.get(bank as usize).unwrap();
         let mut result = vec![];

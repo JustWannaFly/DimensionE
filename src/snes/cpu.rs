@@ -1,9 +1,19 @@
 use crate::{
-    bytes::{combine_bytes, split_bytes}, snes::{cpu::instrusctions::AddressMode, memory::MemoryController},
+    bytes::{combine_bytes, split_bytes},
+    snes::{cpu::instrusctions::AddressMode, memory::MemoryController},
 };
 
 mod instrusctions;
 use instrusctions::{Operation, lookup_opcode};
+
+const CARRY_MASK: u8 = 0b0000_0001;
+const ZERO_MASK: u8 = 0b0000_0010;
+const IRQ_MASK: u8 = 0b0000_0100;
+const DECIMAL_MASK: u8 = 0b0000_1000;
+const INDEX_REG_MASK: u8 = 0b0001_0000;
+const ACCUMULATOR_MASK: u8 = 0b0010_0000;
+const OVERFLOW_MASK: u8 = 0b0100_0000;
+const NEGATIVE_MASK: u8 = 0b1000_0000;
 
 pub struct CPU {
     accumulator: u16,
@@ -34,7 +44,7 @@ impl CPU {
     }
     pub fn initialize(&mut self, program_start: u16) {
         // TODO initialize all registers
-        
+
         self.data_bank = 0x0000;
         self.direct_page = 0x0000_0000;
         self.program_bank = 0x0000_0000;
@@ -51,7 +61,9 @@ impl CPU {
         let operation = lookup_opcode(op_code);
         match operation {
             Operation::ADC(details) => {
-                // let value;
+                let mut sum: u16;
+                let flag_shift: u8;
+                let operand: u16;
                 let arg_bytes = read_op_args(
                     memory_controller,
                     self.program_bank,
@@ -59,7 +71,49 @@ impl CPU {
                     details.arg_length,
                 );
                 let lookup_location = self.resolve_address(arg_bytes, details.address_mode);
-                panic!("not done with adding")
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    // 16 bit
+                    let operand_bytes =
+                        memory_controller.read(lookup_location.0, lookup_location.1, 2);
+                    operand = combine_bytes(operand_bytes[1], operand_bytes[0]);
+                    flag_shift = 15;
+                } else {
+                    // 8 bit
+                    operand = combine_bytes(
+                        0x0000,
+                        memory_controller.read_byte(lookup_location.0, lookup_location.1),
+                    );
+                    flag_shift = 7
+                }
+                if self.processor_status & DECIMAL_MASK == 0 {
+                    sum = self.accumulator.wrapping_add(operand);
+                    // 8 bit wrapping support
+                    if (self.processor_status & ACCUMULATOR_MASK == 1) && sum > 0xFF {
+                        sum -= 0xFF;
+                    }
+                } else {
+                    panic!("binary coded addition not yet implemented")
+                }
+                let is_carry = sum >> flag_shift == 1
+                    && operand >> flag_shift == 0
+                    && self.accumulator >> flag_shift == 0;
+                let is_overflow = (self.accumulator >> flag_shift == operand >> flag_shift)
+                    && (self.accumulator >> flag_shift != sum >> flag_shift);
+                let is_zero = sum == 0;
+                let is_negative = sum >> flag_shift != 0;
+                
+                self.processor_status = build_status_flags(
+                    self.processor_status,
+                    Some(is_carry),
+                    Some(is_zero),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(is_overflow),
+                    Some(is_negative),
+                );
+                self.program_counter = self.program_counter.wrapping_add(1 + details.arg_length)
             }
             Operation::CLC => {
                 self.processor_status = build_status_flags(
@@ -175,9 +229,10 @@ impl CPU {
             ),
         }
     }
-    pub fn resolve_address(&self, bytes: Vec<u8>, address_mode: AddressMode) -> (u8, u16) {
+    fn resolve_address(&self, bytes: Vec<u8>, address_mode: AddressMode) -> (u8, u16) {
         let bank;
         let address;
+        let page_size: u16 = 256;
 
         match address_mode {
             AddressMode::AbsoluteLong => {
@@ -186,7 +241,20 @@ impl CPU {
             }
             AddressMode::DirectPage => {
                 bank = 0x00;
-                address = self.direct_page + bytes[0] as u16;
+                let mut working_address = self.direct_page.wrapping_add(bytes[0] as u16);
+                match self.emulation_flag {
+                    false => {
+                        if working_address > self.direct_page + page_size {
+                            working_address -= page_size;
+                        }
+                    }
+                    true => {
+                        if working_address > page_size {
+                            working_address -= page_size;
+                        }
+                    }
+                }
+                address = working_address
             }
         }
 
@@ -221,80 +289,71 @@ fn build_status_flags(
     overflow: Option<bool>,
     negative: Option<bool>,
 ) -> u8 {
-    let carry_mask = 0b0000_0001;
-    let zero_mask = 0b0000_0010;
-    let irq_mask = 0b0000_0100;
-    let decimal_mask = 0b0000_1000;
-    let index_reg_mask = 0b0001_0000;
-    let accumulator_mask = 0b0010_0000;
-    let overflow_mask = 0b0100_0000;
-    let negative_mask = 0b1000_0000;
-
     let mut maintain_mask: u8 = 0x0;
     let mut set_mask: u8 = 0x0;
     match carry {
         Some(is_set) => {
             if is_set {
-                set_mask += carry_mask
+                set_mask += CARRY_MASK
             }
         }
-        None => maintain_mask += carry_mask,
+        None => maintain_mask += CARRY_MASK,
     }
     match zero {
         Some(is_set) => {
             if is_set {
-                set_mask += zero_mask
+                set_mask += ZERO_MASK
             }
         }
-        None => maintain_mask += zero_mask,
+        None => maintain_mask += ZERO_MASK,
     }
     match irq_disable {
         Some(is_set) => {
             if is_set {
-                set_mask += irq_mask
+                set_mask += IRQ_MASK
             }
         }
-        None => maintain_mask += irq_mask,
+        None => maintain_mask += IRQ_MASK,
     }
     match decimal_mode {
         Some(is_set) => {
             if is_set {
-                set_mask += decimal_mask
+                set_mask += DECIMAL_MASK
             }
         }
-        None => maintain_mask += decimal_mask,
+        None => maintain_mask += DECIMAL_MASK,
     }
     match index_register_select {
         Some(is_set) => {
             if is_set {
-                set_mask += index_reg_mask
+                set_mask += INDEX_REG_MASK
             }
         }
-        None => maintain_mask += index_reg_mask,
+        None => maintain_mask += INDEX_REG_MASK,
     }
     match accumulator_select {
         Some(is_set) => {
             if is_set {
-                set_mask += accumulator_mask
+                set_mask += ACCUMULATOR_MASK
             }
         }
-        None => maintain_mask += accumulator_mask,
+        None => maintain_mask += ACCUMULATOR_MASK,
     }
     match overflow {
         Some(is_set) => {
             if is_set {
-                set_mask += overflow_mask
+                set_mask += OVERFLOW_MASK
             }
         }
-        None => maintain_mask += overflow_mask,
+        None => maintain_mask += OVERFLOW_MASK,
     }
     match negative {
         Some(is_set) => {
             if is_set {
-                set_mask += negative_mask
+                set_mask += NEGATIVE_MASK
             }
         }
-        None => maintain_mask += negative_mask,
+        None => maintain_mask += NEGATIVE_MASK,
     }
     (curr_flags & maintain_mask) | set_mask
 }
@@ -303,7 +362,7 @@ fn read_op_args(
     memory_controller: &MemoryController,
     bank: u8,
     op_address: u16,
-    length: u8,
+    length: u16,
 ) -> Vec<u8> {
     memory_controller.read(bank, op_address.wrapping_add(1), length)
 }

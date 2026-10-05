@@ -121,7 +121,7 @@ pub enum AddressMode {
 }
 
 pub struct OpDetails {
-    pub arg_length: u8,
+    pub arg_length: u16,
     pub address_mode: AddressMode
 }
 
