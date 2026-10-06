@@ -1,9 +1,15 @@
-use crate::snes::cpu::instrusctions::AddressMode::{Absolute, AbsoluteIndexX, AbsoluteIndexY, AbsoluteLong, AbsoluteLongIndexX, DirectPage};
+use crate::snes::cpu::instrusctions::{
+    AddressMode::{
+        Absolute, AbsoluteIndexX, AbsoluteIndexY, AbsoluteLong, AbsoluteLongIndexX, DirectPage,
+        DirectPageIndexX,
+    },
+    Operation::{ADC, CLC, CLD, CLI, CLV, JMP, NOP, SEI, STA, STZ, XCE},
+};
 
 pub enum Operation {
     ADC(AddressMode), // Add with Carry
-    AND,            // And Accumulator with Memory
-    ASL,            // Arithmetic Shift Left
+    AND,              // And Accumulator with Memory
+    ASL,              // Arithmetic Shift Left
     // Branches, //
     // Syntax         Name                         Condition             Opcode  Bytes Cycles   Extra
     BCC, //  near     Branch if Carry Clear        carry clear - c=0     $90     2     2        +1 if branch taken, +1 if e=1
@@ -38,22 +44,22 @@ pub enum Operation {
     EOR, // Exclusive OR Accumulator with Memory
     INC, // Increment
     INX,
-    INY,            // Increment Index Registers
+    INY,              // Increment Index Registers
     JMP(AddressMode), // Jump
-    JML,            // Jump
-    JSR,            // Jump to Subroutine
-    JSL,            // Jump to Subroutine
-    LDA,            // Load Accumulator from Memory
-    LDX,            // Load Index Register X from Memory
-    LDY,            // Load Index Register Y from Memory
-    LSR,            // Logical Shift Right
-    MVN,            // Block Move Next
-    MVP,            // Block Move Previous
-    NOP,            // No Operation
-    ORA,            // OR Accumulator with Memory
-    PEA,            // Push Effective Absolute Address
-    PEI,            // Push Effective Indirect Address
-    PER,            // Push Effective PC Relative Indirect Address
+    JML,              // Jump
+    JSR,              // Jump to Subroutine
+    JSL,              // Jump to Subroutine
+    LDA,              // Load Accumulator from Memory
+    LDX,              // Load Index Register X from Memory
+    LDY,              // Load Index Register Y from Memory
+    LSR,              // Logical Shift Right
+    MVN,              // Block Move Next
+    MVP,              // Block Move Previous
+    NOP,              // No Operation
+    ORA,              // OR Accumulator with Memory
+    PEA,              // Push Effective Absolute Address
+    PEI,              // Push Effective Indirect Address
+    PER,              // Push Effective PC Relative Indirect Address
     // Push to Stack
     //      Name                           Opcode  Bytes Cycles   Extra
     PHA, // Push Accumulator               $48     1     3        +1 if m=0
@@ -86,12 +92,12 @@ pub enum Operation {
     SEI, // Set Interrupt Disable Flag  $78     1      2
     SED, // Set Decimal Flag            $F8     1      2
 
-    SEP, // Set Status Bits
-    STA, // Store Accumulator to Memory
-    STP, // Stop the Processor
-    STX, // Store Index Register X to Memory
-    STY, // Store Index Register Y to Memory
-    STZ, // Store Zero to Memory
+    SEP,              // Set Status Bits
+    STA(AddressMode), // Store Accumulator to Memory
+    STP,              // Stop the Processor
+    STX,              // Store Index Register X to Memory
+    STY,              // Store Index Register Y to Memory
+    STZ(AddressMode), // Store Zero to Memory
     // Transfer Registers
     // Syntax   Name               Opcode  Bytes  Cycles
     TAX, // Transfer A to X          $AA   1      2
@@ -122,24 +128,34 @@ pub enum AddressMode {
     AbsoluteLong,
     AbsoluteLongIndexX,
     DirectPage,
+    DirectPageIndexX,
 }
 
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
-        0x00 => Operation::NOP,
-        0x18 => Operation::CLC,
-        0x58 => Operation::CLI,
-        0x5C => Operation::JMP(AbsoluteLong),
-        0x65 => Operation::ADC(DirectPage),
-        0x6D => Operation::ADC(Absolute),
-        0x6F => Operation::ADC(AbsoluteLong),
-        0x78 => Operation::SEI,
-        0x79 => Operation::ADC(AbsoluteIndexY),
-        0x7D => Operation::ADC(AbsoluteIndexX),
-        0x7F => Operation::ADC(AbsoluteLongIndexX),
-        0xB8 => Operation::CLV,
-        0xD8 => Operation::CLD,
-        0xFB => Operation::XCE,
+        0x00 => NOP,
+        0x18 => CLC,
+        0x58 => CLI,
+        0x5C => JMP(AbsoluteLong),
+        0x64 => STZ(DirectPage),
+        0x65 => ADC(DirectPage),
+        0x6D => ADC(Absolute),
+        0x6F => ADC(AbsoluteLong),
+        0x74 => STZ(DirectPageIndexX),
+        0x78 => SEI,
+        0x79 => ADC(AbsoluteIndexY),
+        0x7D => ADC(AbsoluteIndexX),
+        0x7F => ADC(AbsoluteLongIndexX),
+        0x85 => STA(DirectPage),
+        0x8D => STA(Absolute),
+        0x8F => STA(AbsoluteLong),
+        0x9C => STZ(Absolute),
+        0x9D => STA(AbsoluteIndexX),
+        0x9E => STZ(AbsoluteIndexX),
+        0x9F => STA(AbsoluteLongIndexX),
+        0xB8 => CLV,
+        0xD8 => CLD,
+        0xFB => XCE,
         _ => panic!("Unsupported opcode: [{:X}]", opcode),
     }
 }
