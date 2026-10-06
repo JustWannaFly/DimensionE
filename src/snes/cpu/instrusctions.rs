@@ -1,13 +1,11 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
-        Absolute, AbsoluteIndexX, AbsoluteIndexY, AbsoluteLong, AbsoluteLongIndexX, DirectPage,
-        DirectPageIndexX,
-    },
-    Operation::{ADC, CLC, CLD, CLI, CLV, JMP, NOP, SEI, STA, STZ, XCE},
+        Absolute, AbsoluteIndirect, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageX,
+    }, Operation::{ADC, CLC, CLD, CLI, CLV, JMP, NOP, SEI, STA, STZ, XCE},
 };
 
 pub enum Operation {
-    ADC(AddressMode), // Add with Carry
+    ADC(OpDetail), // Add with Carry
     AND,              // And Accumulator with Memory
     ASL,              // Arithmetic Shift Left
     // Branches, //
@@ -45,7 +43,7 @@ pub enum Operation {
     INC, // Increment
     INX,
     INY,              // Increment Index Registers
-    JMP(AddressMode), // Jump
+    JMP(OpDetail), // Jump
     JML,              // Jump
     JSR,              // Jump to Subroutine
     JSL,              // Jump to Subroutine
@@ -93,11 +91,11 @@ pub enum Operation {
     SED, // Set Decimal Flag            $F8     1      2
 
     SEP,              // Set Status Bits
-    STA(AddressMode), // Store Accumulator to Memory
+    STA(OpDetail), // Store Accumulator to Memory
     STP,              // Stop the Processor
     STX,              // Store Index Register X to Memory
     STY,              // Store Index Register Y to Memory
-    STZ(AddressMode), // Store Zero to Memory
+    STZ(OpDetail), // Store Zero to Memory
     // Transfer Registers
     // Syntax   Name               Opcode  Bytes  Cycles
     TAX, // Transfer A to X          $AA   1      2
@@ -121,40 +119,61 @@ pub enum Operation {
     XCE, // Exchange Carry and Emulation Bits
 }
 
+pub struct OpDetail {
+    pub address_mode: AddressMode,
+    pub op_size: u16,
+}
+
 pub enum AddressMode {
     Absolute,
-    AbsoluteIndexX,
-    AbsoluteIndexY,
+    AbsoluteIndirect,
+    AbsoluteIndirectLong,
+    AbsoluteIndirectX,
     AbsoluteLong,
-    AbsoluteLongIndexX,
+    AbsoluteLongX,
+    AbsoluteX,
+    AbsoluteY,
     DirectPage,
-    DirectPageIndexX,
+    DirectPageX,
 }
 
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
         0x00 => NOP,
+        
         0x18 => CLC,
+        
         0x58 => CLI,
-        0x5C => JMP(AbsoluteLong),
-        0x64 => STZ(DirectPage),
-        0x65 => ADC(DirectPage),
-        0x6D => ADC(Absolute),
-        0x6F => ADC(AbsoluteLong),
-        0x74 => STZ(DirectPageIndexX),
+        0x5C => JMP(OpDetail{address_mode: AbsoluteLong, op_size: 4}),
+        0x4C => JMP(OpDetail { address_mode: Absolute, op_size: 3}),
+        
+        0x64 => STZ(OpDetail{address_mode: DirectPage, op_size: 2}),
+        0x65 => ADC(OpDetail{address_mode: DirectPage, op_size: 2}),
+        0x6C => JMP(OpDetail { address_mode: AbsoluteIndirect, op_size: 3}),
+        0x6D => ADC(OpDetail{address_mode: Absolute, op_size: 3}),
+        0x6F => ADC(OpDetail{address_mode: AbsoluteLong, op_size: 4}),
+        
+        0x74 => STZ(OpDetail{address_mode: DirectPageX, op_size: 2}),
         0x78 => SEI,
-        0x79 => ADC(AbsoluteIndexY),
-        0x7D => ADC(AbsoluteIndexX),
-        0x7F => ADC(AbsoluteLongIndexX),
-        0x85 => STA(DirectPage),
-        0x8D => STA(Absolute),
-        0x8F => STA(AbsoluteLong),
-        0x9C => STZ(Absolute),
-        0x9D => STA(AbsoluteIndexX),
-        0x9E => STZ(AbsoluteIndexX),
-        0x9F => STA(AbsoluteLongIndexX),
+        0x79 => ADC(OpDetail{address_mode: AbsoluteY, op_size: 3}),
+        0x7C => JMP(OpDetail { address_mode: AbsoluteIndirectX, op_size: 3 }),
+        0x7D => ADC(OpDetail{address_mode: AbsoluteX, op_size: 3}),
+        0x7F => ADC(OpDetail{address_mode: AbsoluteLongX, op_size: 4}),
+        
+        0x85 => STA(OpDetail{address_mode: DirectPage, op_size: 2}),
+        0x8D => STA(OpDetail{address_mode: Absolute, op_size: 3}),
+        0x8F => STA(OpDetail{address_mode: AbsoluteLong, op_size: 4}),
+        
+        0x9C => STZ(OpDetail{address_mode: Absolute, op_size: 3}),
+        0x9D => STA(OpDetail{address_mode: AbsoluteX, op_size: 3}),
+        0x9E => STZ(OpDetail{address_mode: AbsoluteX, op_size: 3}),
+        0x9F => STA(OpDetail{address_mode: AbsoluteLongX, op_size: 4}),
+        
         0xB8 => CLV,
+        
         0xD8 => CLD,
+        0xDC => JMP(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
+        
         0xFB => XCE,
         _ => panic!("Unsupported opcode: [{:X}]", opcode),
     }

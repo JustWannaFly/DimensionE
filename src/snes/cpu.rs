@@ -1,6 +1,5 @@
 use crate::{
-    bytes::{combine_bytes, split_bytes},
-    snes::{cpu::instrusctions::AddressMode, memory::MemoryController},
+    bytes::{combine_bytes, split_bytes}, snes::{cpu::instrusctions::{AddressMode, OpDetail}, memory::MemoryController},
 };
 
 mod instrusctions;
@@ -61,11 +60,11 @@ impl CPU {
         );
         let operation = lookup_opcode(op_code);
         match operation {
-            Operation::ADC(address_mode) => {
+            Operation::ADC(detail) => {
                 let mut sum: u16;
                 let flag_shift: u8;
                 let operand: u16;
-                let lookup_location = self.resolve_address(memory_controller, &address_mode);
+                let lookup_location = self.resolve_address(memory_controller, &detail);
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
                     // 16 bit
                     let operand_bytes =
@@ -110,7 +109,7 @@ impl CPU {
                 );
                 self.program_counter = self
                     .program_counter
-                    .wrapping_add(1 + get_arg_byte_count(&address_mode))
+                    .wrapping_add(detail.op_size)
             }
             Operation::CLC => {
                 self.processor_status = build_status_flags(
@@ -168,9 +167,9 @@ impl CPU {
                 );
                 self.program_counter += 1;
             }
-            Operation::JMP(address_mode) => {
+            Operation::JMP(detail) => {
                 let arg_bytes =
-                    self.read_op_args(memory_controller, get_arg_byte_count(&address_mode));
+                    self.read_op_args(memory_controller, detail.op_size - 1);
                 let dest_bank;
                 let dest_address;
                 match op_code {
@@ -200,8 +199,8 @@ impl CPU {
                 );
                 self.program_counter += 1;
             }
-            Operation::STA(address_mode) => {
-                let save_location = self.resolve_address(memory_controller, &address_mode);
+            Operation::STA(detail) => {
+                let save_location = self.resolve_address(memory_controller, &detail);
                 let accumulator_bytes = split_bytes(self.accumulator);
                 let write_bytes;
 
@@ -214,10 +213,10 @@ impl CPU {
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
                 self.program_counter = self
                     .program_counter
-                    .wrapping_add(1 + get_arg_byte_count(&address_mode));
+                    .wrapping_add(detail.op_size);
             }
-            Operation::STZ(address_mode) => {
-                let save_location = self.resolve_address(memory_controller, &address_mode);
+            Operation::STZ(detail) => {
+                let save_location = self.resolve_address(memory_controller, &detail);
                 let write_bytes: Vec<u8>;
 
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
@@ -229,7 +228,7 @@ impl CPU {
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
                 self.program_counter = self
                     .program_counter
-                    .wrapping_add(1 + get_arg_byte_count(&address_mode));
+                    .wrapping_add(detail.op_size);
             }
             Operation::XCE => {
                 let exchanged_flags = build_status_flags(
@@ -256,22 +255,22 @@ impl CPU {
     fn resolve_address(
         &self,
         memory_controller: &MemoryController,
-        address_mode: &AddressMode,
+        op_detail: &OpDetail,
     ) -> (u8, u16) {
         let bank;
         let address;
-        let bytes = self.read_op_args(memory_controller, get_arg_byte_count(address_mode));
+        let bytes = self.read_op_args(memory_controller, op_detail.op_size - 1);
 
-        match address_mode {
+        match op_detail.address_mode {
             AddressMode::Absolute => {
                 bank = self.data_bank;
                 address = combine_bytes(bytes[1], bytes[0]);
             }
-            AddressMode::AbsoluteIndexX => {
+            AddressMode::AbsoluteX => {
                 bank = self.data_bank;
                 address = self.x + combine_bytes(bytes[1], bytes[0]);
             }
-            AddressMode::AbsoluteIndexY => {
+            AddressMode::AbsoluteY => {
                 bank = self.data_bank;
                 address = self.y + combine_bytes(bytes[1], bytes[0]);
             }
@@ -279,7 +278,7 @@ impl CPU {
                 bank = bytes[0];
                 address = combine_bytes(bytes[2], bytes[1]);
             }
-            AddressMode::AbsoluteLongIndexX => {
+            AddressMode::AbsoluteLongX => {
                 bank = todo!("need to add support for AbsoluteLongIndex");
                 address = todo!("need to add support for AbsoluteLongIndex");
             }
@@ -287,7 +286,7 @@ impl CPU {
                 bank = 0x00;
                 address = self.direct_page.wrapping_add(bytes[0] as u16);
             }
-            AddressMode::DirectPageIndexX => {
+            AddressMode::DirectPageX => {
                 bank = todo!("need to add support for DirectPageIndexX");
                 address = todo!("need to add support for DirectPageIndexX");
             }
@@ -301,18 +300,6 @@ impl CPU {
             self.program_counter.wrapping_add(1),
             length,
         )
-    }
-}
-
-fn get_arg_byte_count(address_mode: &AddressMode) -> u16 {
-    match address_mode {
-        AddressMode::Absolute => 2,
-        AddressMode::AbsoluteIndexX => 2,
-        AddressMode::AbsoluteIndexY => 2,
-        AddressMode::AbsoluteLong => 3,
-        AddressMode::AbsoluteLongIndexX => 3,
-        AddressMode::DirectPage => 1,
-        AddressMode::DirectPageIndexX => 1,
     }
 }
 
