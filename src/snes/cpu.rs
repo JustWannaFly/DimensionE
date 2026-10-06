@@ -60,17 +60,11 @@ impl CPU {
         );
         let operation = lookup_opcode(op_code);
         match operation {
-            Operation::ADC(details) => {
+            Operation::ADC(address_mode) => {
                 let mut sum: u16;
                 let flag_shift: u8;
                 let operand: u16;
-                let arg_bytes = read_op_args(
-                    memory_controller,
-                    self.program_bank,
-                    self.program_counter,
-                    details.arg_length,
-                );
-                let lookup_location = self.resolve_address(arg_bytes, details.address_mode);
+                let lookup_location = self.resolve_address(memory_controller, &address_mode);
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
                     // 16 bit
                     let operand_bytes =
@@ -113,7 +107,7 @@ impl CPU {
                     Some(is_overflow),
                     Some(is_negative),
                 );
-                self.program_counter = self.program_counter.wrapping_add(1 + details.arg_length)
+                self.program_counter = self.program_counter.wrapping_add(1 + get_arg_byte_count(&address_mode))
             }
             Operation::CLC => {
                 self.processor_status = build_status_flags(
@@ -171,12 +165,10 @@ impl CPU {
                 );
                 self.program_counter += 1;
             }
-            Operation::JMP(details) => {
-                let arg_bytes = read_op_args(
+            Operation::JMP(address_mode) => {
+                let arg_bytes = self.read_op_args(
                     memory_controller,
-                    self.program_bank,
-                    self.program_counter,
-                    details.arg_length,
+                    get_arg_byte_count(&address_mode),
                 );
                 let dest_bank;
                 let dest_address;
@@ -229,36 +221,57 @@ impl CPU {
             ),
         }
     }
-    fn resolve_address(&self, bytes: Vec<u8>, address_mode: AddressMode) -> (u8, u16) {
+    fn resolve_address(&self, memory_controller: &MemoryController, address_mode: &AddressMode) -> (u8, u16) {
         let bank;
         let address;
-        let page_size: u16 = 256;
+        let bytes = self.read_op_args(memory_controller, get_arg_byte_count(address_mode));
 
         match address_mode {
+            AddressMode::Absolute => {
+                bank = self.data_bank;
+                address = combine_bytes(bytes[1], bytes[0]);
+            }
+            AddressMode::AbsoluteIndexX => {
+                bank = self.data_bank;
+                address = self.x + combine_bytes(bytes[1], bytes[0]);
+            }
+            AddressMode::AbsoluteIndexY => {
+                bank = self.data_bank;
+                address = self.y + combine_bytes(bytes[1], bytes[0]);
+            }
             AddressMode::AbsoluteLong => {
                 bank = bytes[0];
                 address = combine_bytes(bytes[2], bytes[1]);
             }
+            AddressMode::AbsoluteLongIndexX => {
+                bank = todo!("need to add support for AbsoluteLongIndex");
+                address = todo!("need to add support for AbsoluteLongIndex");
+            }
             AddressMode::DirectPage => {
                 bank = 0x00;
-                let mut working_address = self.direct_page.wrapping_add(bytes[0] as u16);
-                match self.emulation_flag {
-                    false => {
-                        if working_address > self.direct_page + page_size {
-                            working_address -= page_size;
-                        }
-                    }
-                    true => {
-                        if working_address > page_size {
-                            working_address -= page_size;
-                        }
-                    }
-                }
-                address = working_address
+                address = self.direct_page.wrapping_add(bytes[0] as u16);                
             }
         }
 
         (bank, address)
+    }
+    fn read_op_args(
+        &self,
+        memory_controller: &MemoryController,
+        length: u16,
+    ) -> Vec<u8> {
+        memory_controller.read(self.program_bank, self.program_counter.wrapping_add(1), length)
+    }
+}
+
+fn get_arg_byte_count(address_mode: &AddressMode) -> u16 {
+    match address_mode {
+        AddressMode::Absolute => 2,
+        AddressMode::AbsoluteIndexX => 2,
+        AddressMode::AbsoluteIndexY => 2,
+        AddressMode::AbsoluteLong => 3,
+        AddressMode::DirectPage => 1,
+        AddressMode::AbsoluteLongIndexX => 3,
     }
 }
 
@@ -356,13 +369,4 @@ fn build_status_flags(
         None => maintain_mask += NEGATIVE_MASK,
     }
     (curr_flags & maintain_mask) | set_mask
-}
-
-fn read_op_args(
-    memory_controller: &MemoryController,
-    bank: u8,
-    op_address: u16,
-    length: u16,
-) -> Vec<u8> {
-    memory_controller.read(bank, op_address.wrapping_add(1), length)
 }

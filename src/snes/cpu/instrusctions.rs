@@ -1,9 +1,9 @@
-use crate::snes::cpu::instrusctions::AddressMode::{AbsoluteLong, DirectPage};
+use crate::snes::cpu::instrusctions::AddressMode::{Absolute, AbsoluteIndexX, AbsoluteIndexY, AbsoluteLong, AbsoluteLongIndexX, DirectPage};
 
 pub enum Operation {
-    ADC(OpDetails), // Add with Carry
-    AND, // And Accumulator with Memory
-    ASL, // Arithmetic Shift Left
+    ADC(AddressMode), // Add with Carry
+    AND,            // And Accumulator with Memory
+    ASL,            // Arithmetic Shift Left
     // Branches, //
     // Syntax         Name                         Condition             Opcode  Bytes Cycles   Extra
     BCC, //  near     Branch if Carry Clear        carry clear - c=0     $90     2     2        +1 if branch taken, +1 if e=1
@@ -38,22 +38,22 @@ pub enum Operation {
     EOR, // Exclusive OR Accumulator with Memory
     INC, // Increment
     INX,
-    INY, // Increment Index Registers
-    JMP(OpDetails), // Jump
-    JML, // Jump
-    JSR, // Jump to Subroutine
-    JSL, // Jump to Subroutine
-    LDA, // Load Accumulator from Memory
-    LDX, // Load Index Register X from Memory
-    LDY, // Load Index Register Y from Memory
-    LSR, // Logical Shift Right
-    MVN, // Block Move Next
-    MVP, // Block Move Previous
-    NOP, // No Operation
-    ORA, // OR Accumulator with Memory
-    PEA, // Push Effective Absolute Address
-    PEI, // Push Effective Indirect Address
-    PER, // Push Effective PC Relative Indirect Address
+    INY,            // Increment Index Registers
+    JMP(AddressMode), // Jump
+    JML,            // Jump
+    JSR,            // Jump to Subroutine
+    JSL,            // Jump to Subroutine
+    LDA,            // Load Accumulator from Memory
+    LDX,            // Load Index Register X from Memory
+    LDY,            // Load Index Register Y from Memory
+    LSR,            // Logical Shift Right
+    MVN,            // Block Move Next
+    MVP,            // Block Move Previous
+    NOP,            // No Operation
+    ORA,            // OR Accumulator with Memory
+    PEA,            // Push Effective Absolute Address
+    PEI,            // Push Effective Indirect Address
+    PER,            // Push Effective PC Relative Indirect Address
     // Push to Stack
     //      Name                           Opcode  Bytes Cycles   Extra
     PHA, // Push Accumulator               $48     1     3        +1 if m=0
@@ -116,13 +116,12 @@ pub enum Operation {
 }
 
 pub enum AddressMode {
+    Absolute,
+    AbsoluteIndexX,
+    AbsoluteIndexY,
     AbsoluteLong,
+    AbsoluteLongIndexX,
     DirectPage,
-}
-
-pub struct OpDetails {
-    pub arg_length: u16,
-    pub address_mode: AddressMode
 }
 
 pub fn lookup_opcode(opcode: u8) -> Operation {
@@ -130,9 +129,14 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x00 => Operation::NOP,
         0x18 => Operation::CLC,
         0x58 => Operation::CLI,
-        0x5C => Operation::JMP(OpDetails{arg_length: 3, address_mode: AbsoluteLong}),
-        0x65 => Operation::ADC(OpDetails{arg_length: 1, address_mode: DirectPage}),
+        0x5C => Operation::JMP(AbsoluteLong),
+        0x65 => Operation::ADC(DirectPage),
+        0x6D => Operation::ADC(Absolute),
+        0x6F => Operation::ADC(AbsoluteLong),
         0x78 => Operation::SEI,
+        0x79 => Operation::ADC(AbsoluteIndexY),
+        0x7D => Operation::ADC(AbsoluteIndexX),
+        0x7F => Operation::ADC(AbsoluteLongIndexX),
         0xB8 => Operation::CLV,
         0xD8 => Operation::CLD,
         0xFB => Operation::XCE,
