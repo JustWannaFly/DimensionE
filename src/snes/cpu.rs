@@ -16,6 +16,7 @@ const OVERFLOW_MASK: u8 = 0b0100_0000;
 const NEGATIVE_MASK: u8 = 0b1000_0000;
 
 pub struct CPU {
+    // TODO add support for emulation mode & decimal mode
     accumulator: u16,
     x: u16,
     y: u16,
@@ -224,7 +225,7 @@ impl CPU {
                 } else {
                     write_bytes = vec![0]
                 }
-                
+
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
                 self.program_counter = self
                     .program_counter
