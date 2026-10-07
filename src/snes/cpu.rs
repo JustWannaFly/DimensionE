@@ -52,6 +52,7 @@ impl CPU {
         self.data_bank = 0x0000;
         self.direct_page = 0x0000_0000;
         self.program_bank = 0x0000_0000;
+        self.stack_pointer = 0x01FF;
         self.emulation_flag = true;
         self.program_counter = program_start;
     }
@@ -264,13 +265,24 @@ impl CPU {
             Operation::XCE => {
                 let old_emulation_flag = self.emulation_flag;
                 self.emulation_flag = (self.processor_status & 0b0000_0001) != 0;
+                
+                // when entering emulation mode index and accumulator are forced into 8 bit mode
+                let accumulator;
+                let index_register;
+                if old_emulation_flag {
+                    accumulator = Some(true);
+                    index_register = Some(true);
+                } else {
+                    accumulator = None;
+                    index_register = None;
+                }
                 self.update_processor_status(
                     Some(old_emulation_flag),
                     None,
                     None,
                     None,
-                    None,
-                    None,
+                    index_register,
+                    accumulator,
                     None,
                     None,
                 );
