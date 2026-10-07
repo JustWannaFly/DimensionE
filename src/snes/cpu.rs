@@ -1,5 +1,9 @@
 use crate::{
-    bytes::{combine_bytes, split_bytes}, snes::{cpu::instrusctions::{AddressMode, OpDetail}, memory::MemoryController},
+    bytes::{combine_bytes, split_bytes},
+    snes::{
+        cpu::instrusctions::{AddressMode, OpDetail},
+        memory::MemoryController,
+    },
 };
 
 mod instrusctions;
@@ -63,20 +67,10 @@ impl CPU {
             Operation::ADC(detail) => {
                 let mut sum: u16;
                 let flag_shift: u8;
-                let operand: u16;
-                let lookup_location = self.resolve_address(memory_controller, &detail);
+                let operand = self.fetch_operand(memory_controller, &detail);
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
-                    // 16 bit
-                    let operand_bytes =
-                        memory_controller.read(lookup_location.0, lookup_location.1, 2);
-                    operand = combine_bytes(operand_bytes[1], operand_bytes[0]);
                     flag_shift = 15;
                 } else {
-                    // 8 bit
-                    operand = combine_bytes(
-                        0x0000,
-                        memory_controller.read_byte(lookup_location.0, lookup_location.1),
-                    );
                     flag_shift = 7
                 }
                 if self.processor_status & DECIMAL_MASK == 0 {
@@ -96,8 +90,7 @@ impl CPU {
                 let is_zero = sum == 0;
                 let is_negative = sum >> flag_shift != 0;
 
-                self.processor_status = build_status_flags(
-                    self.processor_status,
+                self.update_processor_status(
                     Some(is_carry),
                     Some(is_zero),
                     None,
@@ -107,13 +100,31 @@ impl CPU {
                     Some(is_overflow),
                     Some(is_negative),
                 );
-                self.program_counter = self
-                    .program_counter
-                    .wrapping_add(detail.op_size)
+                self.program_counter = self.program_counter.wrapping_add(detail.op_size)
+            }
+            Operation::AND(detail) => {
+                let operand = self.fetch_operand(memory_controller, &detail);
+
+                let result = self.accumulator & operand;
+                let is_negative = if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    result >> 15 != 0
+                } else {
+                    result >> 7 != 0
+                };
+                let is_zero = result == 0;
+                self.update_processor_status(
+                    None,
+                    Some(is_zero),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(is_negative),
+                );
             }
             Operation::CLC => {
-                self.processor_status = build_status_flags(
-                    self.processor_status,
+                self.update_processor_status(
                     Some(false),
                     None,
                     None,
@@ -126,8 +137,7 @@ impl CPU {
                 self.program_counter += 1;
             }
             Operation::CLD => {
-                self.processor_status = build_status_flags(
-                    self.processor_status,
+                self.update_processor_status(
                     None,
                     None,
                     None,
@@ -140,8 +150,7 @@ impl CPU {
                 self.program_counter += 1;
             }
             Operation::CLI => {
-                self.processor_status = build_status_flags(
-                    self.processor_status,
+                self.update_processor_status(
                     None,
                     None,
                     Some(false),
@@ -154,8 +163,7 @@ impl CPU {
                 self.program_counter += 1;
             }
             Operation::CLV => {
-                self.processor_status = build_status_flags(
-                    self.processor_status,
+                self.update_processor_status(
                     None,
                     None,
                     None,
@@ -168,8 +176,7 @@ impl CPU {
                 self.program_counter += 1;
             }
             Operation::JMP(detail) => {
-                let arg_bytes =
-                    self.read_op_args(memory_controller, detail.op_size - 1);
+                let arg_bytes = self.read_op_args(memory_controller, detail.op_size - 1);
                 let dest_bank;
                 let dest_address;
                 match op_code {
@@ -182,12 +189,40 @@ impl CPU {
                 self.program_bank = dest_bank;
                 self.program_counter = dest_address;
             }
+            Operation::LDA(detail) => {
+                let value = self.fetch_operand(memory_controller, &detail);
+                let is_negative;
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    is_negative = value >> 15 != 0
+                } else {
+                    is_negative = value >> 7 != 0
+                }
+                let is_zero = value == 0;
+                self.update_processor_status(
+                    None,
+                    Some(is_zero),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(is_negative),
+                );
+                self.accumulator = value;
+
+                let mut op_size = detail.op_size;
+                if matches!(detail.address_mode, AddressMode::Immediate)
+                    && self.processor_status & ACCUMULATOR_MASK != 0
+                {
+                    op_size -= 1;
+                }
+                self.program_counter = self.program_counter.wrapping_add(op_size);
+            }
             Operation::NOP => {
                 self.program_counter += 1;
             }
             Operation::SEI => {
-                self.processor_status = build_status_flags(
-                    self.processor_status,
+                self.update_processor_status(
                     None,
                     None,
                     Some(true),
@@ -200,7 +235,7 @@ impl CPU {
                 self.program_counter += 1;
             }
             Operation::STA(detail) => {
-                let save_location = self.resolve_address(memory_controller, &detail);
+                let save_location = self.resolve_address(memory_controller, &detail).unwrap();
                 let accumulator_bytes = split_bytes(self.accumulator);
                 let write_bytes;
 
@@ -211,29 +246,26 @@ impl CPU {
                 }
 
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.program_counter = self
-                    .program_counter
-                    .wrapping_add(detail.op_size);
+                self.program_counter = self.program_counter.wrapping_add(detail.op_size);
             }
             Operation::STZ(detail) => {
-                let save_location = self.resolve_address(memory_controller, &detail);
+                let save_location = self.resolve_address(memory_controller, &detail).unwrap();
                 let write_bytes: Vec<u8>;
 
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
-                    write_bytes = vec![0,0]
+                    write_bytes = vec![0, 0]
                 } else {
                     write_bytes = vec![0]
                 }
 
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.program_counter = self
-                    .program_counter
-                    .wrapping_add(detail.op_size);
+                self.program_counter = self.program_counter.wrapping_add(detail.op_size);
             }
             Operation::XCE => {
-                let exchanged_flags = build_status_flags(
-                    self.processor_status,
-                    Some(self.emulation_flag),
+                let old_emulation_flag = self.emulation_flag;
+                self.emulation_flag = (self.processor_status & 0b0000_0001) != 0;
+                self.update_processor_status(
+                    Some(old_emulation_flag),
                     None,
                     None,
                     None,
@@ -242,8 +274,6 @@ impl CPU {
                     None,
                     None,
                 );
-                self.emulation_flag = (self.processor_status & 0b0000_0001) != 0;
-                self.processor_status = exchanged_flags;
                 self.program_counter += 1;
             }
             _ => panic!(
@@ -256,7 +286,7 @@ impl CPU {
         &self,
         memory_controller: &MemoryController,
         op_detail: &OpDetail,
-    ) -> (u8, u16) {
+    ) -> Option<(u8, u16)> {
         let bank;
         let address;
         let bytes = self.read_op_args(memory_controller, op_detail.op_size - 1);
@@ -266,6 +296,23 @@ impl CPU {
                 bank = self.data_bank;
                 address = combine_bytes(bytes[1], bytes[0]);
             }
+            AddressMode::AbsoluteIndirect => {
+                todo!("need to add support for AbsoluteIndirect");
+            }
+            AddressMode::AbsoluteIndirectLong => {
+                todo!("need to add support for AbsoluteIndirectLong");
+            }
+            AddressMode::AbsoluteIndirectX => {
+                todo!("need to add support for AbsoluteIndirectX");
+            }
+            AddressMode::AbsoluteLong => {
+                bank = bytes[0];
+                address = combine_bytes(bytes[2], bytes[1]);
+            }
+            AddressMode::AbsoluteLongX => {
+                bank = todo!("need to add support for AbsoluteLongX");
+                address = todo!("need to add support for AbsoluteLongX");
+            }
             AddressMode::AbsoluteX => {
                 bank = self.data_bank;
                 address = self.x + combine_bytes(bytes[1], bytes[0]);
@@ -274,25 +321,39 @@ impl CPU {
                 bank = self.data_bank;
                 address = self.y + combine_bytes(bytes[1], bytes[0]);
             }
-            AddressMode::AbsoluteLong => {
-                bank = bytes[0];
-                address = combine_bytes(bytes[2], bytes[1]);
-            }
-            AddressMode::AbsoluteLongX => {
-                bank = todo!("need to add support for AbsoluteLongIndex");
-                address = todo!("need to add support for AbsoluteLongIndex");
-            }
             AddressMode::DirectPage => {
                 bank = 0x00;
                 address = self.direct_page.wrapping_add(bytes[0] as u16);
             }
+            AddressMode::DirectPageIndirect => {
+                todo!("need to add support for DirectPageIndirect");
+            }
+            AddressMode::DirectPageIndirectLong => {
+                todo!("need to add support for DirectPageIndirectLong");
+            }
+            AddressMode::DirectPageIndirectLongY => {
+                todo!("need to add support for DirectPageIndirectLongY");
+            }
+            AddressMode::DirectPageIndirectX => {
+                todo!("need to add support for DirectPageIndirectX");
+            }
+            AddressMode::DirectPageIndirectY => {
+                todo!("need to add support for DirectPageIndirectY");
+            }
             AddressMode::DirectPageX => {
-                bank = todo!("need to add support for DirectPageIndexX");
-                address = todo!("need to add support for DirectPageIndexX");
+                bank = todo!("need to add support for DirectPageX");
+                address = todo!("need to add support for DirectPageX");
+            }
+            AddressMode::Immediate => return None,
+            AddressMode::StackRelative => {
+                todo!("need to add support for StackRelative");
+            }
+            AddressMode::StackRelativeIndirectY => {
+                todo!("need to add support for StackRelativeIndirectY");
             }
         }
 
-        (bank, address)
+        Some((bank, address))
     }
     fn read_op_args(&self, memory_controller: &MemoryController, length: u16) -> Vec<u8> {
         memory_controller.read(
@@ -301,36 +362,62 @@ impl CPU {
             length,
         )
     }
-}
-
-/// Processor flags
-/// Bits: 7   6   5   4   3   2   1   0
-///                                  |e├─── Emulation: 0 = Native Mode
-///      |n| |v| |m| |x| |d| |i| |z| |c|
-///      └┼───┼───┼───┼───┼───┼───┼───┼┘
-///       │   │   │   │   │   │   │   └──────── Carry: 1 = Carry set
-///       │   │   │   │   │   │   └───────────── Zero: 1 = Result is zero
-///       │   │   │   │   │   └────────── IRQ Disable: 1 = Disabled
-///       │   │   │   │   └───────────── Decimal Mode: 1 = Decimal, 0 = Hexadecimal
-///       │   │   │   └──────── Index Register Select: 1 = 8-bit, 0 = 16-bit
-///       │   │   └─────────────── Accumulator Select: 1 = 8-bit, 0 = 16-bit
-///       │   └───────────────────────────── Overflow: 1 = Overflow set
-///       └───────────────────────────────── Negative: 1 = Negative set
-///
-/// *note: when setting the accumulator into 8-bit mode, the caller is responsible
-///     for clearing the high bits
-fn build_status_flags(
-    curr_flags: u8,
-    carry: Option<bool>,
-    zero: Option<bool>,
-    irq_disable: Option<bool>,
-    decimal_mode: Option<bool>,
-    index_register_select: Option<bool>,
-    accumulator_select: Option<bool>,
-    overflow: Option<bool>,
-    negative: Option<bool>,
-) -> u8 {
-    let mut maintain_mask: u8 = 0x0;
+    fn fetch_operand(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u16 {
+        let lookup_location = self.resolve_address(memory_controller, detail);
+        let operand;
+        if self.processor_status & ACCUMULATOR_MASK == 0 {
+            // 16 bit
+            match lookup_location {
+                Some(location) => {
+                    let operand_bytes = memory_controller.read(location.0, location.1, 2);
+                    operand = combine_bytes(operand_bytes[1], operand_bytes[0]);
+                }
+                None => {
+                    let bytes = self.read_op_args(memory_controller, 2);
+                    operand = combine_bytes(bytes[1], bytes[0]);
+                }
+            }
+        } else {
+            // 8 bit
+            match lookup_location {
+                Some(location) => {
+                    operand =
+                        combine_bytes(0x0000, memory_controller.read_byte(location.0, location.1));
+                }
+                None => {
+                    operand = combine_bytes(0x0000, self.read_op_args(memory_controller, 1)[0]);
+                }
+            }
+        }
+        return operand;
+    }
+    /// Processor flags
+    /// Bits: 7   6   5   4   3   2   1   0
+    ///                                  |e├─── Emulation: 0 = Native Mode
+    ///      |n| |v| |m| |x| |d| |i| |z| |c|
+    ///      └┼───┼───┼───┼───┼───┼───┼───┼┘
+    ///       │   │   │   │   │   │   │   └──────── Carry: 1 = Carry set
+    ///       │   │   │   │   │   │   └───────────── Zero: 1 = Result is zero
+    ///       │   │   │   │   │   └────────── IRQ Disable: 1 = Disabled
+    ///       │   │   │   │   └───────────── Decimal Mode: 1 = Decimal, 0 = Hexadecimal
+    ///       │   │   │   └──────── Index Register Select: 1 = 8-bit, 0 = 16-bit
+    ///       │   │   └─────────────── Accumulator Select: 1 = 8-bit, 0 = 16-bit
+    ///       │   └───────────────────────────── Overflow: 1 = Overflow set
+    ///       └───────────────────────────────── Negative: 1 = Negative set
+    ///
+    /// When setting index registers to 8 bit this will also clear the high order bits of X and Y
+    fn update_processor_status(
+        &mut self,
+        carry: Option<bool>,
+        zero: Option<bool>,
+        irq_disable: Option<bool>,
+        decimal_mode: Option<bool>,
+        index_register_select: Option<bool>,
+        accumulator_select: Option<bool>,
+        overflow: Option<bool>,
+        negative: Option<bool>,
+    ) {
+        let mut maintain_mask: u8 = 0x0;
     let mut set_mask: u8 = 0x0;
     match carry {
         Some(is_set) => {
@@ -367,7 +454,9 @@ fn build_status_flags(
     match index_register_select {
         Some(is_set) => {
             if is_set {
-                set_mask += INDEX_REG_MASK
+                set_mask += INDEX_REG_MASK;
+                self.x = self.x & 0x00FF;
+                self.y = self.y & 0x00FF;
             }
         }
         None => maintain_mask += INDEX_REG_MASK,
@@ -396,5 +485,6 @@ fn build_status_flags(
         }
         None => maintain_mask += NEGATIVE_MASK,
     }
-    (curr_flags & maintain_mask) | set_mask
+    self.processor_status = (self.processor_status & maintain_mask) | set_mask
+    }
 }
