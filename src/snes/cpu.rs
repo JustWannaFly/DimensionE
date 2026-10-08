@@ -123,58 +123,23 @@ impl CPU {
                     None,
                     Some(is_negative),
                 );
+                self.program_counter = self.program_counter.wrapping_add(detail.op_size);
             }
             Operation::CLC => {
-                self.update_processor_status(
-                    Some(false),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
-                self.program_counter += 1;
+                self.update_processor_status(Some(false), None, None, None, None, None, None, None);
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             Operation::CLD => {
-                self.update_processor_status(
-                    None,
-                    None,
-                    None,
-                    Some(false),
-                    None,
-                    None,
-                    None,
-                    None,
-                );
-                self.program_counter += 1;
+                self.update_processor_status(None, None, None, Some(false), None, None, None, None);
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             Operation::CLI => {
-                self.update_processor_status(
-                    None,
-                    None,
-                    Some(false),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
-                self.program_counter += 1;
+                self.update_processor_status(None, None, Some(false), None, None, None, None, None);
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             Operation::CLV => {
-                self.update_processor_status(
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(false),
-                    None,
-                );
-                self.program_counter += 1;
+                self.update_processor_status(None, None, None, None, None, None, Some(false), None);
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             Operation::JMP(detail) => {
                 let arg_bytes = self.read_op_args(memory_controller, detail.op_size - 1);
@@ -220,20 +185,11 @@ impl CPU {
                 self.program_counter = self.program_counter.wrapping_add(op_size);
             }
             Operation::NOP => {
-                self.program_counter += 1;
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             Operation::SEI => {
-                self.update_processor_status(
-                    None,
-                    None,
-                    Some(true),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
-                self.program_counter += 1;
+                self.update_processor_status(None, None, Some(true), None, None, None, None, None);
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             Operation::STA(detail) => {
                 let save_location = self.resolve_address(memory_controller, &detail).unwrap();
@@ -265,7 +221,7 @@ impl CPU {
             Operation::XCE => {
                 let old_emulation_flag = self.emulation_flag;
                 self.emulation_flag = (self.processor_status & 0b0000_0001) != 0;
-                
+
                 // when entering emulation mode index and accumulator are forced into 8 bit mode
                 let accumulator;
                 let index_register;
@@ -286,7 +242,7 @@ impl CPU {
                     None,
                     None,
                 );
-                self.program_counter += 1;
+                self.program_counter = self.program_counter.wrapping_add(1);
             }
             _ => panic!(
                 "Operation function not implemented for op_code: [{:X}]",
@@ -309,59 +265,87 @@ impl CPU {
                 address = combine_bytes(bytes[1], bytes[0]);
             }
             AddressMode::AbsoluteIndirect => {
-                todo!("need to add support for AbsoluteIndirect");
+                bank = 0x00;
+                let pointer = combine_bytes(bytes[1], bytes[0]);
+                let addr_bytes = memory_controller.read(0, pointer, 2);
+                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
             AddressMode::AbsoluteIndirectLong => {
-                todo!("need to add support for AbsoluteIndirectLong");
+                let pointer = combine_bytes(bytes[1], bytes[0]);
+                let addr_bytes = memory_controller.read(0, pointer, 3);
+                bank = addr_bytes[2];
+                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
             AddressMode::AbsoluteIndirectX => {
-                todo!("need to add support for AbsoluteIndirectX");
+                bank = 0x00;
+                let pointer = self.x.wrapping_add(combine_bytes(bytes[1], bytes[0]));
+                let addr_bytes = memory_controller.read(0, pointer, 2);
+                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
             AddressMode::AbsoluteLong => {
                 bank = bytes[0];
                 address = combine_bytes(bytes[2], bytes[1]);
             }
             AddressMode::AbsoluteLongX => {
-                bank = todo!("need to add support for AbsoluteLongX");
-                address = todo!("need to add support for AbsoluteLongX");
+                bank = bytes[2];
+                address = self.x.wrapping_add(combine_bytes(bytes[1], bytes[0]));
             }
             AddressMode::AbsoluteX => {
                 bank = self.data_bank;
-                address = self.x + combine_bytes(bytes[1], bytes[0]);
+                address = self.x.wrapping_add(combine_bytes(bytes[1], bytes[0]));
             }
             AddressMode::AbsoluteY => {
                 bank = self.data_bank;
-                address = self.y + combine_bytes(bytes[1], bytes[0]);
+                address = self.y.wrapping_add(combine_bytes(bytes[1], bytes[0]));
             }
             AddressMode::DirectPage => {
                 bank = 0x00;
                 address = self.direct_page.wrapping_add(bytes[0] as u16);
             }
             AddressMode::DirectPageIndirect => {
-                todo!("need to add support for DirectPageIndirect");
+                bank = self.data_bank;
+                let pointer = self.direct_page.wrapping_add(bytes[0] as u16);
+                let addr_bytes = memory_controller.read(0, pointer, 2);
+                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
             AddressMode::DirectPageIndirectLong => {
-                todo!("need to add support for DirectPageIndirectLong");
+                let pointer = self.direct_page.wrapping_add(bytes[0] as u16);
+                let addr_bytes = memory_controller.read(0, pointer, 3);
+                bank = addr_bytes[2];
+                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
             AddressMode::DirectPageIndirectLongY => {
-                todo!("need to add support for DirectPageIndirectLongY");
+                let pointer = self.direct_page.wrapping_add(bytes[0] as u16);
+                let addr_bytes = memory_controller.read(0, pointer, 3);
+                bank = addr_bytes[2];
+                address = self.y.wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
             }
             AddressMode::DirectPageIndirectX => {
-                todo!("need to add support for DirectPageIndirectX");
+                bank = self.data_bank;
+                let pointer = self.direct_page.wrapping_add(self.x.wrapping_add(bytes[0] as u16));
+                let addr_bytes = memory_controller.read(0, pointer, 2);
+                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
             AddressMode::DirectPageIndirectY => {
-                todo!("need to add support for DirectPageIndirectY");
+                bank = self.data_bank;
+                let pointer = self.direct_page.wrapping_add(bytes[0] as u16);
+                let addr_bytes = memory_controller.read(0, pointer, 2);
+                address = self.y.wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
             }
             AddressMode::DirectPageX => {
-                bank = todo!("need to add support for DirectPageX");
-                address = todo!("need to add support for DirectPageX");
+                bank = 0x00;
+                address = self.direct_page.wrapping_add(self.x.wrapping_add(bytes[0] as u16));
             }
             AddressMode::Immediate => return None,
             AddressMode::StackRelative => {
-                todo!("need to add support for StackRelative");
+                bank = 0x00;
+                address = self.stack_pointer.wrapping_add(bytes[0] as u16);
             }
             AddressMode::StackRelativeIndirectY => {
-                todo!("need to add support for StackRelativeIndirectY");
+                bank = self.data_bank;
+                let pointer = self.stack_pointer.wrapping_add(bytes[0] as u16);
+                let addr_bytes = memory_controller.read(bank, pointer, 2);
+                address = self.y.wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
             }
         }
 
@@ -430,73 +414,73 @@ impl CPU {
         negative: Option<bool>,
     ) {
         let mut maintain_mask: u8 = 0x0;
-    let mut set_mask: u8 = 0x0;
-    match carry {
-        Some(is_set) => {
-            if is_set {
-                set_mask += CARRY_MASK
+        let mut set_mask: u8 = 0x0;
+        match carry {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += CARRY_MASK
+                }
             }
+            None => maintain_mask += CARRY_MASK,
         }
-        None => maintain_mask += CARRY_MASK,
-    }
-    match zero {
-        Some(is_set) => {
-            if is_set {
-                set_mask += ZERO_MASK
+        match zero {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += ZERO_MASK
+                }
             }
+            None => maintain_mask += ZERO_MASK,
         }
-        None => maintain_mask += ZERO_MASK,
-    }
-    match irq_disable {
-        Some(is_set) => {
-            if is_set {
-                set_mask += IRQ_MASK
+        match irq_disable {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += IRQ_MASK
+                }
             }
+            None => maintain_mask += IRQ_MASK,
         }
-        None => maintain_mask += IRQ_MASK,
-    }
-    match decimal_mode {
-        Some(is_set) => {
-            if is_set {
-                set_mask += DECIMAL_MASK
+        match decimal_mode {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += DECIMAL_MASK
+                }
             }
+            None => maintain_mask += DECIMAL_MASK,
         }
-        None => maintain_mask += DECIMAL_MASK,
-    }
-    match index_register_select {
-        Some(is_set) => {
-            if is_set {
-                set_mask += INDEX_REG_MASK;
-                self.x = self.x & 0x00FF;
-                self.y = self.y & 0x00FF;
+        match index_register_select {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += INDEX_REG_MASK;
+                    self.x = self.x & 0x00FF;
+                    self.y = self.y & 0x00FF;
+                }
             }
+            None => maintain_mask += INDEX_REG_MASK,
         }
-        None => maintain_mask += INDEX_REG_MASK,
-    }
-    match accumulator_select {
-        Some(is_set) => {
-            if is_set {
-                set_mask += ACCUMULATOR_MASK
+        match accumulator_select {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += ACCUMULATOR_MASK
+                }
             }
+            None => maintain_mask += ACCUMULATOR_MASK,
         }
-        None => maintain_mask += ACCUMULATOR_MASK,
-    }
-    match overflow {
-        Some(is_set) => {
-            if is_set {
-                set_mask += OVERFLOW_MASK
+        match overflow {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += OVERFLOW_MASK
+                }
             }
+            None => maintain_mask += OVERFLOW_MASK,
         }
-        None => maintain_mask += OVERFLOW_MASK,
-    }
-    match negative {
-        Some(is_set) => {
-            if is_set {
-                set_mask += NEGATIVE_MASK
+        match negative {
+            Some(is_set) => {
+                if is_set {
+                    set_mask += NEGATIVE_MASK
+                }
             }
+            None => maintain_mask += NEGATIVE_MASK,
         }
-        None => maintain_mask += NEGATIVE_MASK,
-    }
-    self.processor_status = (self.processor_status & maintain_mask) | set_mask
+        self.processor_status = (self.processor_status & maintain_mask) | set_mask
     }
 }
