@@ -81,7 +81,7 @@ impl CPU {
                         sum -= 0xFF;
                     }
                 } else {
-                    panic!("binary coded addition not yet implemented")
+                    todo!("binary coded addition not yet implemented")
                 }
                 let is_carry = sum >> flag_shift == 1
                     && operand >> flag_shift == 0
@@ -101,7 +101,13 @@ impl CPU {
                     Some(is_overflow),
                     Some(is_negative),
                 );
-                self.program_counter = self.program_counter.wrapping_add(detail.op_size)
+                let mut op_size = detail.op_size;
+                if matches!(detail.address_mode, AddressMode::Immediate)
+                    && self.processor_status & ACCUMULATOR_MASK != 0
+                {
+                    op_size -= 1;
+                }
+                self.program_counter = self.program_counter.wrapping_add(op_size);
             }
             Operation::AND(detail) => {
                 let operand = self.fetch_operand(memory_controller, &detail);
@@ -123,7 +129,13 @@ impl CPU {
                     None,
                     Some(is_negative),
                 );
-                self.program_counter = self.program_counter.wrapping_add(detail.op_size);
+                let mut op_size = detail.op_size;
+                if matches!(detail.address_mode, AddressMode::Immediate)
+                    && self.processor_status & ACCUMULATOR_MASK != 0
+                {
+                    op_size -= 1;
+                }
+                self.program_counter = self.program_counter.wrapping_add(op_size);
             }
             Operation::CLC => {
                 self.update_processor_status(Some(false), None, None, None, None, None, None, None);
@@ -150,7 +162,7 @@ impl CPU {
                         dest_bank = arg_bytes[0];
                         dest_address = combine_bytes(arg_bytes[2], arg_bytes[1]);
                     }
-                    _ => panic!("Unsupported JMP op_code: [{:X}]", op_code),
+                    _ => todo!("Unsupported JMP op_code: [{:X}]", op_code),
                 }
                 self.program_bank = dest_bank;
                 self.program_counter = dest_address;
@@ -187,9 +199,148 @@ impl CPU {
             Operation::NOP => {
                 self.program_counter = self.program_counter.wrapping_add(1);
             }
+            Operation::ORA(detail) => {
+                let flag_shift: u8;
+                let operand = self.fetch_operand(memory_controller, &detail);
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    flag_shift = 15;
+                } else {
+                    flag_shift = 7
+                }
+                self.accumulator = self.accumulator | operand;
+                let is_zero = self.accumulator == 0;
+                let is_negative = self.accumulator >> flag_shift != 0;
+
+                self.update_processor_status(
+                    None,
+                    Some(is_zero),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(is_negative),
+                );
+
+                let mut op_size = detail.op_size;
+                if matches!(detail.address_mode, AddressMode::Immediate)
+                    && self.processor_status & ACCUMULATOR_MASK != 0
+                {
+                    op_size -= 1;
+                }
+                self.program_counter = self.program_counter.wrapping_add(op_size);
+            }
+            Operation::REP => {
+                let clear_flags = self.read_op_args(memory_controller, 1)[0];
+                let carry = if clear_flags & CARRY_MASK != 0 {
+                    Some(false)
+                } else {
+                    None
+                };
+                let zero = if clear_flags & ZERO_MASK != 0 {
+                    Some(false)
+                } else {
+                    None
+                };
+                let irq_disable = if clear_flags & IRQ_MASK != 0 {
+                    Some(false)
+                } else {
+                    None
+                };
+                let decimal = if clear_flags & DECIMAL_MASK != 0 {
+                    Some(false)
+                } else {
+                    None
+                };
+                let index_register = if clear_flags & INDEX_REG_MASK != 0 || self.emulation_flag {
+                    Some(false)
+                } else {
+                    None
+                };
+                let accumulator = if clear_flags & ACCUMULATOR_MASK != 0 || self.emulation_flag {
+                    Some(false)
+                } else {
+                    None
+                };
+                let overflow = if clear_flags & OVERFLOW_MASK != 0 {
+                    Some(false)
+                } else {
+                    None
+                };
+                let negative = if clear_flags & NEGATIVE_MASK != 0 {
+                    Some(false)
+                } else {
+                    None
+                };
+                self.update_processor_status(
+                    carry,
+                    zero,
+                    irq_disable,
+                    decimal,
+                    index_register,
+                    accumulator,
+                    overflow,
+                    negative,
+                );
+                self.program_counter = self.program_counter.wrapping_add(2);
+            }
             Operation::SEI => {
                 self.update_processor_status(None, None, Some(true), None, None, None, None, None);
                 self.program_counter = self.program_counter.wrapping_add(1);
+            }
+            Operation::SEP => {
+                let clear_flags = self.read_op_args(memory_controller, 1)[0];
+                let carry = if clear_flags & CARRY_MASK != 0 {
+                    Some(true)
+                } else {
+                    None
+                };
+                let zero = if clear_flags & ZERO_MASK != 0 {
+                    Some(true)
+                } else {
+                    None
+                };
+                let irq_disable = if clear_flags & IRQ_MASK != 0 {
+                    Some(true)
+                } else {
+                    None
+                };
+                let decimal = if clear_flags & DECIMAL_MASK != 0 {
+                    Some(true)
+                } else {
+                    None
+                };
+                let index_register = if clear_flags & INDEX_REG_MASK != 0 || self.emulation_flag {
+                    Some(true)
+                } else {
+                    None
+                };
+                let accumulator = if clear_flags & ACCUMULATOR_MASK != 0 || self.emulation_flag {
+                    Some(true)
+                } else {
+                    None
+                };
+                let overflow = if clear_flags & OVERFLOW_MASK != 0 {
+                    Some(true)
+                } else {
+                    None
+                };
+                let negative = if clear_flags & NEGATIVE_MASK != 0 {
+                    Some(true)
+                } else {
+                    None
+                };
+                self.update_processor_status(
+                    carry,
+                    zero,
+                    irq_disable,
+                    decimal,
+                    index_register,
+                    accumulator,
+                    overflow,
+                    negative,
+                );
+                self.program_counter = self.program_counter.wrapping_add(2);
             }
             Operation::STA(detail) => {
                 let save_location = self.resolve_address(memory_controller, &detail).unwrap();
@@ -218,6 +369,10 @@ impl CPU {
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
                 self.program_counter = self.program_counter.wrapping_add(detail.op_size);
             }
+            Operation::TCD => {
+                self.direct_page = self.accumulator;
+                self.program_counter = self.program_counter.wrapping_add(1);
+            }
             Operation::XCE => {
                 let old_emulation_flag = self.emulation_flag;
                 self.emulation_flag = (self.processor_status & 0b0000_0001) != 0;
@@ -244,7 +399,7 @@ impl CPU {
                 );
                 self.program_counter = self.program_counter.wrapping_add(1);
             }
-            _ => panic!(
+            _ => todo!(
                 "Operation function not implemented for op_code: [{:X}]",
                 op_code
             ),
@@ -318,11 +473,15 @@ impl CPU {
                 let pointer = self.direct_page.wrapping_add(bytes[0] as u16);
                 let addr_bytes = memory_controller.read(0, pointer, 3);
                 bank = addr_bytes[2];
-                address = self.y.wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
+                address = self
+                    .y
+                    .wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
             }
             AddressMode::DirectPageIndirectX => {
                 bank = self.data_bank;
-                let pointer = self.direct_page.wrapping_add(self.x.wrapping_add(bytes[0] as u16));
+                let pointer = self
+                    .direct_page
+                    .wrapping_add(self.x.wrapping_add(bytes[0] as u16));
                 let addr_bytes = memory_controller.read(0, pointer, 2);
                 address = combine_bytes(addr_bytes[1], addr_bytes[0]);
             }
@@ -330,11 +489,15 @@ impl CPU {
                 bank = self.data_bank;
                 let pointer = self.direct_page.wrapping_add(bytes[0] as u16);
                 let addr_bytes = memory_controller.read(0, pointer, 2);
-                address = self.y.wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
+                address = self
+                    .y
+                    .wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
             }
             AddressMode::DirectPageX => {
                 bank = 0x00;
-                address = self.direct_page.wrapping_add(self.x.wrapping_add(bytes[0] as u16));
+                address = self
+                    .direct_page
+                    .wrapping_add(self.x.wrapping_add(bytes[0] as u16));
             }
             AddressMode::Immediate => return None,
             AddressMode::StackRelative => {
@@ -345,7 +508,9 @@ impl CPU {
                 bank = self.data_bank;
                 let pointer = self.stack_pointer.wrapping_add(bytes[0] as u16);
                 let addr_bytes = memory_controller.read(bank, pointer, 2);
-                address = self.y.wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
+                address = self
+                    .y
+                    .wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
             }
         }
 
@@ -449,7 +614,7 @@ impl CPU {
         }
         match index_register_select {
             Some(is_set) => {
-                if is_set {
+                if is_set || self.emulation_flag {
                     set_mask += INDEX_REG_MASK;
                     self.x = self.x & 0x00FF;
                     self.y = self.y & 0x00FF;
@@ -459,7 +624,7 @@ impl CPU {
         }
         match accumulator_select {
             Some(is_set) => {
-                if is_set {
+                if is_set || self.emulation_flag {
                     set_mask += ACCUMULATOR_MASK
                 }
             }

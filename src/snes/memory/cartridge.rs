@@ -141,7 +141,7 @@ impl Cartridge {
             }
             _ => {
                 dbg!(&self.header);
-                panic!("Cartridge mapping not implemented");
+                todo!("Cartridge mapping not implemented");
             }
         }
         return self.bytes.get(location).copied();

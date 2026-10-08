@@ -1,7 +1,7 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
         Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, LDA, NOP, SEI, STA, STZ, XCE},
+    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, LDA, NOP, ORA, REP, SEI, SEP, STA, STZ, TCD, XCE},
 };
 
 pub enum Operation {
@@ -54,7 +54,7 @@ pub enum Operation {
     MVN,              // Block Move Next
     MVP,              // Block Move Previous
     NOP,              // No Operation
-    ORA,              // OR Accumulator with Memory
+    ORA(OpDetail),              // OR Accumulator with Memory
     PEA,              // Push Effective Absolute Address
     PEI,              // Push Effective Indirect Address
     PER,              // Push Effective PC Relative Indirect Address
@@ -148,8 +148,23 @@ pub enum AddressMode {
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
         0x00 => NOP,
+        0x01 => ORA(OpDetail { address_mode:DirectPageIndirectX, op_size: 2 }),
+        0x03 => ORA(OpDetail { address_mode:StackRelative, op_size: 2 }),
+        0x05 => ORA(OpDetail { address_mode:DirectPage, op_size: 2 }),
+        0x07 => ORA(OpDetail { address_mode:DirectPageIndirectLong, op_size: 2 }),
+        0x09 => ORA(OpDetail { address_mode:Immediate, op_size: 3 }),
+        0x0D => ORA(OpDetail { address_mode:Absolute, op_size: 3 }),
+        0x0F => ORA(OpDetail { address_mode:AbsoluteLong, op_size: 4 }),
         
+        0x11 => ORA(OpDetail { address_mode:DirectPageIndirectY, op_size: 2 }),
+        0x12 => ORA(OpDetail { address_mode:DirectPageIndirect, op_size: 2 }),
+        0x13 => ORA(OpDetail { address_mode:StackRelativeIndirectY, op_size: 2 }),
+        0x15 => ORA(OpDetail { address_mode:DirectPageX, op_size: 2 }),
+        0x17 => ORA(OpDetail { address_mode:DirectPageIndirectLongY, op_size: 2 }),
         0x18 => CLC,
+        0x19 => ORA(OpDetail { address_mode:AbsoluteY, op_size: 3 }),
+        0x1D => ORA(OpDetail { address_mode:AbsoluteX, op_size: 3 }),
+        0x1F => ORA(OpDetail { address_mode:AbsoluteLongX, op_size: 4 }),
         
         0x21 => AND(OpDetail { address_mode: DirectPageIndirectX, op_size: 2 }),
         0x23 => AND(OpDetail { address_mode: StackRelative, op_size: 2 }),
@@ -169,6 +184,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x3F => AND(OpDetail { address_mode: AbsoluteLongX, op_size: 4 }),
 
         0x58 => CLI,
+        0x5B => TCD,
         0x5C => JMP(OpDetail{address_mode: AbsoluteLong, op_size: 4}),
         0x4C => JMP(OpDetail { address_mode: Absolute, op_size: 3}),
         
@@ -211,11 +227,15 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xBD => LDA(OpDetail{address_mode: AbsoluteX, op_size: 3}),
         0xBF => LDA(OpDetail{address_mode: AbsoluteLongX, op_size: 4}),
         0xB7 => LDA(OpDetail{address_mode: DirectPageIndirectLongY, op_size: 2}),
+
+        0xC2 => REP,
         
         0xD8 => CLD,
         0xDC => JMP(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
         
+        0xE2 => SEP,
+
         0xFB => XCE,
-        _ => panic!("Unsupported opcode: [{:X}]", opcode),
+        _ => todo!("Unsupported opcode: [{:X}]", opcode),
     }
 }
