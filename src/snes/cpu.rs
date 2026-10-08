@@ -373,6 +373,10 @@ impl CPU {
                 self.direct_page = self.accumulator;
                 self.program_counter = self.program_counter.wrapping_add(1);
             }
+            Operation::TCS => {
+                self.stack_pointer = self.accumulator;
+                self.program_counter = self.program_counter.wrapping_add(1);
+            }
             Operation::XCE => {
                 let old_emulation_flag = self.emulation_flag;
                 self.emulation_flag = (self.processor_status & 0b0000_0001) != 0;

@@ -1,7 +1,7 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
         Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, LDA, NOP, ORA, REP, SEI, SEP, STA, STZ, TCD, XCE},
+    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, LDA, NOP, ORA, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
 };
 
 pub enum Operation {
@@ -163,6 +163,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x17 => ORA(OpDetail { address_mode:DirectPageIndirectLongY, op_size: 2 }),
         0x18 => CLC,
         0x19 => ORA(OpDetail { address_mode:AbsoluteY, op_size: 3 }),
+        0x1B => TCS,
         0x1D => ORA(OpDetail { address_mode:AbsoluteX, op_size: 3 }),
         0x1F => ORA(OpDetail { address_mode:AbsoluteLongX, op_size: 4 }),
         
