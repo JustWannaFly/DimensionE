@@ -1,7 +1,7 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
         Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, JSL, JSR, LDA, NOP, ORA, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
+    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, JSL, JSR, LDA, NOP, ORA, PHA, PHB, PHD, PHK, PHP, PHX, PHY, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
 };
 
 pub enum Operation {
@@ -152,7 +152,9 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x03 => ORA(OpDetail { address_mode:StackRelative, op_size: 2 }),
         0x05 => ORA(OpDetail { address_mode:DirectPage, op_size: 2 }),
         0x07 => ORA(OpDetail { address_mode:DirectPageIndirectLong, op_size: 2 }),
+        0x08 => PHP,
         0x09 => ORA(OpDetail { address_mode:Immediate, op_size: 3 }),
+        0x0B => PHD,
         0x0D => ORA(OpDetail { address_mode:Absolute, op_size: 3 }),
         0x0F => ORA(OpDetail { address_mode:AbsoluteLong, op_size: 4 }),
         
@@ -186,10 +188,14 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x3D => AND(OpDetail { address_mode: AbsoluteX, op_size: 3 }),
         0x3F => AND(OpDetail { address_mode: AbsoluteLongX, op_size: 4 }),
 
+        0x48 => PHA,
+        0x4B => PHK,
+        0x4C => JMP(OpDetail { address_mode: Absolute, op_size: 3}),
+
         0x58 => CLI,
+        0x5A => PHY,
         0x5B => TCD,
         0x5C => JMP(OpDetail{address_mode: AbsoluteLong, op_size: 4}),
-        0x4C => JMP(OpDetail { address_mode: Absolute, op_size: 3}),
         
         0x64 => STZ(OpDetail{address_mode: DirectPage, op_size: 2}),
         0x65 => ADC(OpDetail{address_mode: DirectPage, op_size: 2}),
@@ -205,6 +211,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x7F => ADC(OpDetail{address_mode: AbsoluteLongX, op_size: 4}),
         
         0x85 => STA(OpDetail{address_mode: DirectPage, op_size: 2}),
+        0x8B => PHB,
         0x8D => STA(OpDetail{address_mode: Absolute, op_size: 3}),
         0x8F => STA(OpDetail{address_mode: AbsoluteLong, op_size: 4}),
         
@@ -234,6 +241,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xC2 => REP,
         
         0xD8 => CLD,
+        0xDA => PHX,
         0xDC => JMP(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
         
         0xE2 => SEP,

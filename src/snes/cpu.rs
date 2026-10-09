@@ -164,7 +164,6 @@ impl CPU {
             }
             Operation::JSR(detail) => {
                 self.stack_push_16(memory_controller, self.program_counter.wrapping_add(detail.op_size));
-                let args = self.read_op_args(memory_controller, 2);
                 let location = self.resolve_address(memory_controller, &detail).unwrap();
                 self.program_counter = location.1;
             }
@@ -218,6 +217,46 @@ impl CPU {
                 );
 
                 self.advance_program_counter_with_detail(&detail);
+            }
+            Operation::PHA => {
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    self.stack_push_16(memory_controller, self.accumulator);
+                } else {
+                    self.stack_push_8(memory_controller, split_bytes(self.accumulator).0);
+                }
+                self.advance_program_counter(1);
+            }
+            Operation::PHB => {
+                self.stack_push_8(memory_controller, self.data_bank);
+                self.advance_program_counter(1);
+            }
+            Operation::PHD => {
+                self.stack_push_16(memory_controller, self.direct_page);
+                self.advance_program_counter(1);
+            }
+            Operation::PHK => {
+                self.stack_push_8(memory_controller, self.program_bank);
+                self.advance_program_counter(1);
+            }
+            Operation::PHP => {
+                self.stack_push_8(memory_controller, self.processor_status);
+                self.advance_program_counter(1);
+            }
+            Operation::PHX => {
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    self.stack_push_16(memory_controller, self.x);
+                } else {
+                    self.stack_push_8(memory_controller, split_bytes(self.x).0);
+                }
+                self.advance_program_counter(1);
+            }
+            Operation::PHY => {
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    self.stack_push_16(memory_controller, self.y);
+                } else {
+                    self.stack_push_8(memory_controller, split_bytes(self.y).0);
+                }
+                self.advance_program_counter(1);
             }
             Operation::REP => {
                 let clear_flags = self.read_op_args(memory_controller, 1)[0];
