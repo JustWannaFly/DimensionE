@@ -1,8 +1,8 @@
+use std::{mem, panic::Location};
+
 use crate::{
-    bytes::{combine_bytes, split_bytes},
-    snes::{
-        cpu::instrusctions::{AddressMode, OpDetail},
-        memory::MemoryController,
+    bytes::{combine_bytes, split_bytes}, snes::{
+        cpu::instrusctions::{AddressMode, OpDetail, Operation::JSL}, memory::MemoryController,
     },
 };
 
@@ -101,13 +101,7 @@ impl CPU {
                     Some(is_overflow),
                     Some(is_negative),
                 );
-                let mut op_size = detail.op_size;
-                if matches!(detail.address_mode, AddressMode::Immediate)
-                    && self.processor_status & ACCUMULATOR_MASK != 0
-                {
-                    op_size -= 1;
-                }
-                self.program_counter = self.program_counter.wrapping_add(op_size);
+                self.advance_program_counter_with_detail(&detail);
             }
             Operation::AND(detail) => {
                 let operand = self.fetch_operand(memory_controller, &detail);
@@ -129,29 +123,23 @@ impl CPU {
                     None,
                     Some(is_negative),
                 );
-                let mut op_size = detail.op_size;
-                if matches!(detail.address_mode, AddressMode::Immediate)
-                    && self.processor_status & ACCUMULATOR_MASK != 0
-                {
-                    op_size -= 1;
-                }
-                self.program_counter = self.program_counter.wrapping_add(op_size);
+                self.advance_program_counter_with_detail(&detail);
             }
             Operation::CLC => {
                 self.update_processor_status(Some(false), None, None, None, None, None, None, None);
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::CLD => {
                 self.update_processor_status(None, None, None, Some(false), None, None, None, None);
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::CLI => {
                 self.update_processor_status(None, None, Some(false), None, None, None, None, None);
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::CLV => {
                 self.update_processor_status(None, None, None, None, None, None, Some(false), None);
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::JMP(detail) => {
                 let arg_bytes = self.read_op_args(memory_controller, detail.op_size - 1);
@@ -166,6 +154,19 @@ impl CPU {
                 }
                 self.program_bank = dest_bank;
                 self.program_counter = dest_address;
+            }
+            Operation::JSL => {
+                self.stack_push_8(memory_controller, self.program_bank);
+                self.stack_push_16(memory_controller, self.program_counter.wrapping_add(4));
+                let arg_bytes = self.read_op_args(memory_controller, 3);
+                self.program_bank = arg_bytes[2];
+                self.program_counter = combine_bytes(arg_bytes[1], arg_bytes[0]);
+            }
+            Operation::JSR(detail) => {
+                self.stack_push_16(memory_controller, self.program_counter.wrapping_add(detail.op_size));
+                let args = self.read_op_args(memory_controller, 2);
+                let location = self.resolve_address(memory_controller, &detail).unwrap();
+                self.program_counter = location.1;
             }
             Operation::LDA(detail) => {
                 let value = self.fetch_operand(memory_controller, &detail);
@@ -188,16 +189,10 @@ impl CPU {
                 );
                 self.accumulator = value;
 
-                let mut op_size = detail.op_size;
-                if matches!(detail.address_mode, AddressMode::Immediate)
-                    && self.processor_status & ACCUMULATOR_MASK != 0
-                {
-                    op_size -= 1;
-                }
-                self.program_counter = self.program_counter.wrapping_add(op_size);
+                self.advance_program_counter_with_detail(&detail);
             }
             Operation::NOP => {
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::ORA(detail) => {
                 let flag_shift: u8;
@@ -222,13 +217,7 @@ impl CPU {
                     Some(is_negative),
                 );
 
-                let mut op_size = detail.op_size;
-                if matches!(detail.address_mode, AddressMode::Immediate)
-                    && self.processor_status & ACCUMULATOR_MASK != 0
-                {
-                    op_size -= 1;
-                }
-                self.program_counter = self.program_counter.wrapping_add(op_size);
+                self.advance_program_counter_with_detail(&detail);
             }
             Operation::REP => {
                 let clear_flags = self.read_op_args(memory_controller, 1)[0];
@@ -282,7 +271,7 @@ impl CPU {
                     overflow,
                     negative,
                 );
-                self.program_counter = self.program_counter.wrapping_add(2);
+                self.advance_program_counter(2);
             }
             Operation::SEI => {
                 self.update_processor_status(None, None, Some(true), None, None, None, None, None);
@@ -340,7 +329,7 @@ impl CPU {
                     overflow,
                     negative,
                 );
-                self.program_counter = self.program_counter.wrapping_add(2);
+                self.advance_program_counter(2);
             }
             Operation::STA(detail) => {
                 let save_location = self.resolve_address(memory_controller, &detail).unwrap();
@@ -354,7 +343,7 @@ impl CPU {
                 }
 
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.program_counter = self.program_counter.wrapping_add(detail.op_size);
+                self.advance_program_counter_with_detail(&detail);
             }
             Operation::STZ(detail) => {
                 let save_location = self.resolve_address(memory_controller, &detail).unwrap();
@@ -367,15 +356,15 @@ impl CPU {
                 }
 
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.program_counter = self.program_counter.wrapping_add(detail.op_size);
+                self.advance_program_counter_with_detail(&detail);
             }
             Operation::TCD => {
                 self.direct_page = self.accumulator;
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::TCS => {
                 self.stack_pointer = self.accumulator;
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             Operation::XCE => {
                 let old_emulation_flag = self.emulation_flag;
@@ -401,7 +390,7 @@ impl CPU {
                     None,
                     None,
                 );
-                self.program_counter = self.program_counter.wrapping_add(1);
+                self.advance_program_counter(1);
             }
             _ => todo!(
                 "Operation function not implemented for op_code: [{:X}]",
@@ -651,5 +640,35 @@ impl CPU {
             None => maintain_mask += NEGATIVE_MASK,
         }
         self.processor_status = (self.processor_status & maintain_mask) | set_mask
+    }
+    fn advance_program_counter_with_detail(&mut self, op_detail: &OpDetail) {
+        let mut op_size = op_detail.op_size;
+        if matches!(op_detail.address_mode, AddressMode::Immediate)
+            && self.processor_status & ACCUMULATOR_MASK != 0
+        {
+            op_size -= 1;
+        }
+        self.advance_program_counter(op_size);
+    }
+    fn advance_program_counter(&mut self, op_size: u16) {
+        self.program_counter = self.program_counter.wrapping_add(op_size);
+    }
+    fn stack_push_8(&mut self, memory_controller: &mut MemoryController, value: u8) {
+        memory_controller.write(0x00, self.stack_pointer, vec![value]);
+        self.stack_pointer = self.stack_pointer.wrapping_sub(1)
+    }
+    fn stack_push_16(&mut self, memory_controller: &mut MemoryController, value: u16) {
+        let bytes = split_bytes(value);
+        self.stack_push_8(memory_controller, bytes.1);
+        self.stack_push_8(memory_controller, bytes.0);
+    }
+    fn stack_pop_8(&mut self, memory_controller: &MemoryController) -> u8 {
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        memory_controller.read_byte(0x00, self.stack_pointer)
+    }
+    fn stack_pop_16(&mut self, memory_controller: &MemoryController) -> u16 {
+        let low_byte = self.stack_pop_8(memory_controller);
+        let high_byte = self.stack_pop_8(memory_controller);
+        combine_bytes(high_byte, low_byte)
     }
 }

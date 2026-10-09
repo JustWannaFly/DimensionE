@@ -1,7 +1,7 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
         Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, LDA, NOP, ORA, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
+    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, JSL, JSR, LDA, NOP, ORA, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
 };
 
 pub enum Operation {
@@ -45,7 +45,7 @@ pub enum Operation {
     INY,              // Increment Index Registers
     JMP(OpDetail), // Jump
     JML,              // Jump
-    JSR,              // Jump to Subroutine
+    JSR(OpDetail),              // Jump to Subroutine
     JSL,              // Jump to Subroutine
     LDA(OpDetail),              // Load Accumulator from Memory
     LDX,              // Load Index Register X from Memory
@@ -167,7 +167,9 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x1D => ORA(OpDetail { address_mode:AbsoluteX, op_size: 3 }),
         0x1F => ORA(OpDetail { address_mode:AbsoluteLongX, op_size: 4 }),
         
+        0x20 => JSR(OpDetail { address_mode: Absolute, op_size: 3 }),
         0x21 => AND(OpDetail { address_mode: DirectPageIndirectX, op_size: 2 }),
+        0x22 => JSL,
         0x23 => AND(OpDetail { address_mode: StackRelative, op_size: 2 }),
         0x25 => AND(OpDetail { address_mode: DirectPage, op_size: 2 }),
         0x27 => AND(OpDetail { address_mode: DirectPageIndirectLong, op_size: 2 }),
@@ -210,7 +212,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x9D => STA(OpDetail{address_mode: AbsoluteX, op_size: 3}),
         0x9E => STZ(OpDetail{address_mode: AbsoluteX, op_size: 3}),
         0x9F => STA(OpDetail{address_mode: AbsoluteLongX, op_size: 4}),
-
+        
         0xA1 => LDA(OpDetail{address_mode: DirectPageIndirectX, op_size: 2}),
         0xA3 => LDA(OpDetail{address_mode: StackRelative, op_size: 2}),
         0xA5 => LDA(OpDetail{address_mode: DirectPage, op_size: 2}),
@@ -228,15 +230,17 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xBD => LDA(OpDetail{address_mode: AbsoluteX, op_size: 3}),
         0xBF => LDA(OpDetail{address_mode: AbsoluteLongX, op_size: 4}),
         0xB7 => LDA(OpDetail{address_mode: DirectPageIndirectLongY, op_size: 2}),
-
+        
         0xC2 => REP,
         
         0xD8 => CLD,
         0xDC => JMP(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
         
         0xE2 => SEP,
-
+        
         0xFB => XCE,
+        0xFC => JSR(OpDetail { address_mode: AbsoluteIndirectX, op_size: 3 }),
+        
         _ => todo!("Unsupported opcode: [{:X}]", opcode),
     }
 }
