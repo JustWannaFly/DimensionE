@@ -1,7 +1,7 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
         Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JMP, JSL, JSR, LDA, NOP, ORA, PHA, PHB, PHD, PHK, PHP, PHX, PHY, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
+    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JML, JMP, JSL, JSR, LDA, LDY, NOP, ORA, PHA, PHB, PHD, PHK, PHP, PHX, PHY, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
 };
 
 pub enum Operation {
@@ -44,12 +44,12 @@ pub enum Operation {
     INX,
     INY,              // Increment Index Registers
     JMP(OpDetail), // Jump
-    JML,              // Jump
+    JML(OpDetail),              // Jump
     JSR(OpDetail),              // Jump to Subroutine
     JSL,              // Jump to Subroutine
     LDA(OpDetail),              // Load Accumulator from Memory
     LDX,              // Load Index Register X from Memory
-    LDY,              // Load Index Register Y from Memory
+    LDY(OpDetail),              // Load Index Register Y from Memory
     LSR,              // Logical Shift Right
     MVN,              // Block Move Next
     MVP,              // Block Move Previous
@@ -195,7 +195,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x58 => CLI,
         0x5A => PHY,
         0x5B => TCD,
-        0x5C => JMP(OpDetail { address_mode: AbsoluteLong, op_size: 4 }),
+        0x5C => JML(OpDetail { address_mode: AbsoluteLong, op_size: 4 }),
         
         0x64 => STZ(OpDetail { address_mode: DirectPage, op_size: 2 }),
         0x65 => ADC(OpDetail { address_mode: DirectPage, op_size: 2 }),
@@ -220,20 +220,25 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x9E => STZ(OpDetail { address_mode: AbsoluteX, op_size: 3 }),
         0x9F => STA(OpDetail { address_mode: AbsoluteLongX, op_size: 4 }),
         
+        0xA0 => LDY(OpDetail { address_mode:Immediate , op_size: 3 }),
         0xA1 => LDA(OpDetail { address_mode: DirectPageIndirectX, op_size: 2 }),
         0xA3 => LDA(OpDetail { address_mode: StackRelative, op_size: 2 }),
+        0xA4 => LDY(OpDetail { address_mode:DirectPage , op_size: 2 }),
         0xA5 => LDA(OpDetail { address_mode: DirectPage, op_size: 2 }),
         0xA7 => LDA(OpDetail { address_mode: DirectPageIndirectLong, op_size: 2 }),
         0xA9 => LDA(OpDetail { address_mode: Immediate, op_size: 3 }),
+        0xAC => LDY(OpDetail { address_mode:Absolute , op_size: 3 }),
         0xAD => LDA(OpDetail { address_mode: Absolute, op_size: 3 }),
         0xAF => LDA(OpDetail { address_mode: AbsoluteLong, op_size: 4 }),
         
         0xB1 => LDA(OpDetail { address_mode: DirectPageIndirectY, op_size: 2 }),
         0xB2 => LDA(OpDetail { address_mode: DirectPageIndirect, op_size: 2 }),
         0xB3 => LDA(OpDetail { address_mode: StackRelativeIndirectY, op_size: 2 }),
+        0xB4 => LDY(OpDetail { address_mode:DirectPageX , op_size: 2 }),
         0xB5 => LDA(OpDetail { address_mode: DirectPageX, op_size: 2 }),
         0xB8 => CLV,
         0xB9 => LDA(OpDetail { address_mode: AbsoluteY, op_size: 3 }),
+        0xBC => LDY(OpDetail { address_mode:AbsoluteX , op_size: 3 }),
         0xBD => LDA(OpDetail { address_mode: AbsoluteX, op_size: 3 }),
         0xBF => LDA(OpDetail { address_mode: AbsoluteLongX, op_size: 4 }),
         0xB7 => LDA(OpDetail { address_mode: DirectPageIndirectLongY, op_size: 2 }),
@@ -242,7 +247,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         
         0xD8 => CLD,
         0xDA => PHX,
-        0xDC => JMP(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
+        0xDC => JML(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
         
         0xE2 => SEP,
         

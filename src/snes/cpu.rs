@@ -1,8 +1,10 @@
 use std::{mem, panic::Location};
 
 use crate::{
-    bytes::{combine_bytes, split_bytes}, snes::{
-        cpu::instrusctions::{AddressMode, OpDetail, Operation::JSL}, memory::MemoryController,
+    bytes::{combine_bytes, split_bytes},
+    snes::{
+        cpu::instrusctions::{AddressMode, OpDetail, Operation::JSL},
+        memory::MemoryController,
     },
 };
 
@@ -141,19 +143,14 @@ impl CPU {
                 self.update_processor_status(None, None, None, None, None, None, Some(false), None);
                 self.advance_program_counter(1);
             }
+            Operation::JML(detail) => {
+                let location = self.resolve_address(memory_controller, &detail).unwrap();
+                self.program_bank = location.0;
+                self.program_counter = location.1;
+            }
             Operation::JMP(detail) => {
-                let arg_bytes = self.read_op_args(memory_controller, detail.op_size - 1);
-                let dest_bank;
-                let dest_address;
-                match op_code {
-                    0x5C => {
-                        dest_bank = arg_bytes[0];
-                        dest_address = combine_bytes(arg_bytes[2], arg_bytes[1]);
-                    }
-                    _ => todo!("Unsupported JMP op_code: [{:X}]", op_code),
-                }
-                self.program_bank = dest_bank;
-                self.program_counter = dest_address;
+                let location = self.resolve_address(memory_controller, &detail).unwrap();
+                self.program_counter = location.1;
             }
             Operation::JSL => {
                 self.stack_push_8(memory_controller, self.program_bank);
@@ -163,7 +160,10 @@ impl CPU {
                 self.program_counter = combine_bytes(arg_bytes[1], arg_bytes[0]);
             }
             Operation::JSR(detail) => {
-                self.stack_push_16(memory_controller, self.program_counter.wrapping_add(detail.op_size));
+                self.stack_push_16(
+                    memory_controller,
+                    self.program_counter.wrapping_add(detail.op_size),
+                );
                 let location = self.resolve_address(memory_controller, &detail).unwrap();
                 self.program_counter = location.1;
             }
@@ -189,6 +189,17 @@ impl CPU {
                 self.accumulator = value;
 
                 self.advance_program_counter_with_detail(&detail);
+            }
+            Operation::LDY(detail) => {
+                let value;
+                let is8bit = self.processor_status & INDEX_REG_MASK != 0;
+                if is8bit {
+                    value = combine_bytes(0x0000, self.fetch_operand8(memory_controller, &detail))
+                } else {
+                    value = self.fetch_operand16(memory_controller, &detail);
+                }
+                self.y = value;
+                self.advance_program_counter_detail_and_8bit(&detail, is8bit);
             }
             Operation::NOP => {
                 self.advance_program_counter(1);
@@ -556,33 +567,37 @@ impl CPU {
         )
     }
     fn fetch_operand(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u16 {
-        let lookup_location = self.resolve_address(memory_controller, detail);
-        let operand;
         if self.processor_status & ACCUMULATOR_MASK == 0 {
-            // 16 bit
-            match lookup_location {
-                Some(location) => {
-                    let operand_bytes = memory_controller.read(location.0, location.1, 2);
-                    operand = combine_bytes(operand_bytes[1], operand_bytes[0]);
-                }
-                None => {
-                    let bytes = self.read_op_args(memory_controller, 2);
-                    operand = combine_bytes(bytes[1], bytes[0]);
-                }
-            }
+            // 16bit mode
+            return self.fetch_operand16(memory_controller, detail);
         } else {
             // 8 bit
-            match lookup_location {
-                Some(location) => {
-                    operand =
-                        combine_bytes(0x0000, memory_controller.read_byte(location.0, location.1));
-                }
-                None => {
-                    operand = combine_bytes(0x0000, self.read_op_args(memory_controller, 1)[0]);
-                }
+            return combine_bytes(0x0000, self.fetch_operand8(memory_controller, detail));
+        }
+    }
+    fn fetch_operand8(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u8 {
+        let lookup_location = self.resolve_address(memory_controller, detail);
+        match lookup_location {
+            Some(location) => {
+                return memory_controller.read_byte(location.0, location.1);
+            }
+            None => {
+                return self.read_op_args(memory_controller, 1)[0];
             }
         }
-        return operand;
+    }
+    fn fetch_operand16(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u16 {
+        let lookup_location = self.resolve_address(memory_controller, detail);
+        match lookup_location {
+            Some(location) => {
+                let operand_bytes = memory_controller.read(location.0, location.1, 2);
+                return combine_bytes(operand_bytes[1], operand_bytes[0]);
+            }
+            None => {
+                let bytes = self.read_op_args(memory_controller, 2);
+                return combine_bytes(bytes[1], bytes[0]);
+            }
+        }
     }
     /// Processor flags
     /// Bits: 7   6   5   4   3   2   1   0
@@ -681,9 +696,13 @@ impl CPU {
         self.processor_status = (self.processor_status & maintain_mask) | set_mask
     }
     fn advance_program_counter_with_detail(&mut self, op_detail: &OpDetail) {
+        let is8bit = self.processor_status & ACCUMULATOR_MASK != 0;
+        self.advance_program_counter_detail_and_8bit(op_detail, is8bit);
+    }
+    fn advance_program_counter_detail_and_8bit(&mut self, op_detail: &OpDetail, is8bit: bool) {
         let mut op_size = op_detail.op_size;
         if matches!(op_detail.address_mode, AddressMode::Immediate)
-            && self.processor_status & ACCUMULATOR_MASK != 0
+            && is8bit
         {
             op_size -= 1;
         }
