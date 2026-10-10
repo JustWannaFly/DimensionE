@@ -1,13 +1,13 @@
 use crate::snes::cpu::instrusctions::{
     AddressMode::{
-        Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, CLC, CLD, CLI, CLV, JML, JMP, JSL, JSR, LDA, LDY, NOP, ORA, PHA, PHB, PHD, PHK, PHP, PHX, PHY, REP, SEI, SEP, STA, STZ, TCD, TCS, XCE},
+        Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, Accumulator, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, Immediate, StackRelative, StackRelativeIndirectY,
+    }, Operation::{ADC, AND, ASL, BPL, BRK, CLC, CLD, CLI, CLV, COP, INC, JML, JMP, JSL, JSR, LDA, LDY, NOP, ORA, PHA, PHB, PHD, PHK, PHP, PHX, PHY, REP, SEI, SEP, STA, STZ, TCD, TCS, TSB, XCE},
 };
 
 pub enum Operation {
     ADC(OpDetail), // Add with Carry
     AND(OpDetail),              // And Accumulator with Memory
-    ASL,              // Arithmetic Shift Left
+    ASL(OpDetail),              // Arithmetic Shift Left
     // Branches, //
     // Syntax         Name                         Condition             Opcode  Bytes Cycles   Extra
     BCC, //  near     Branch if Carry Clear        carry clear - c=0     $90     2     2        +1 if branch taken, +1 if e=1
@@ -40,7 +40,7 @@ pub enum Operation {
     DEX,
     DEY, // Decrement Index Registers
     EOR, // Exclusive OR Accumulator with Memory
-    INC, // Increment
+    INC(OpDetail), // Increment
     INX,
     INY,              // Increment Index Registers
     JMP(OpDetail), // Jump
@@ -112,7 +112,7 @@ pub enum Operation {
     TYX, // Transfer Y to X          $BB   1      2
 
     TRB, // Test and Reset Memory Bits Against Accumulator
-    TSB, // Test and Set Memory Bits Against Accumulator
+    TSB(OpDetail), // Test and Set Memory Bits Against Accumulator
     WAI, // Wait for Interrupt
     WDM, // Reserved for Future Expansion
     XBA, // Exchange the B and A Accumulators
@@ -133,6 +133,7 @@ pub enum AddressMode {
     AbsoluteLongX,
     AbsoluteX,
     AbsoluteY,
+    Accumulator,
     DirectPage,
     DirectPageIndirect,
     DirectPageIndirectLong,
@@ -147,26 +148,36 @@ pub enum AddressMode {
 
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
-        0x00 => NOP,
+        0x00 => BRK,
         0x01 => ORA(OpDetail { address_mode:DirectPageIndirectX, op_size: 2 }),
+        0x02 => COP,
         0x03 => ORA(OpDetail { address_mode:StackRelative, op_size: 2 }),
+        0x04 => TSB(OpDetail { address_mode: DirectPage, op_size: 2 }),
         0x05 => ORA(OpDetail { address_mode:DirectPage, op_size: 2 }),
+        0x06 => ASL(OpDetail { address_mode: DirectPage, op_size: 2 }),
         0x07 => ORA(OpDetail { address_mode:DirectPageIndirectLong, op_size: 2 }),
         0x08 => PHP,
         0x09 => ORA(OpDetail { address_mode:Immediate, op_size: 3 }),
+        0x0A => ASL(OpDetail { address_mode:Accumulator, op_size: 1 }),
         0x0B => PHD,
+        0x0C => TSB(OpDetail { address_mode: Absolute, op_size: 3 }),
         0x0D => ORA(OpDetail { address_mode:Absolute, op_size: 3 }),
+        0x0E => ASL(OpDetail { address_mode: Absolute, op_size: 3 }),
         0x0F => ORA(OpDetail { address_mode:AbsoluteLong, op_size: 4 }),
         
+        0x10 => BPL,
         0x11 => ORA(OpDetail { address_mode:DirectPageIndirectY, op_size: 2 }),
         0x12 => ORA(OpDetail { address_mode:DirectPageIndirect, op_size: 2 }),
         0x13 => ORA(OpDetail { address_mode:StackRelativeIndirectY, op_size: 2 }),
         0x15 => ORA(OpDetail { address_mode:DirectPageX, op_size: 2 }),
+        0x16 => ASL(OpDetail { address_mode: DirectPageX, op_size: 2 }),
         0x17 => ORA(OpDetail { address_mode:DirectPageIndirectLongY, op_size: 2 }),
         0x18 => CLC,
         0x19 => ORA(OpDetail { address_mode:AbsoluteY, op_size: 3 }),
+        0x1A => INC(OpDetail { address_mode: Accumulator, op_size: 1 }),
         0x1B => TCS,
         0x1D => ORA(OpDetail { address_mode:AbsoluteX, op_size: 3 }),
+        0x1E => ASL(OpDetail { address_mode: AbsoluteX, op_size: 3 }),
         0x1F => ORA(OpDetail { address_mode:AbsoluteLongX, op_size: 4 }),
         
         0x20 => JSR(OpDetail { address_mode: Absolute, op_size: 3 }),
@@ -250,9 +261,13 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xDC => JML(OpDetail { address_mode: AbsoluteIndirectLong, op_size: 3 }),
         
         0xE2 => SEP,
-        
+        0xE6 => INC(OpDetail { address_mode: DirectPage, op_size: 2 }),
+        0xEE => INC(OpDetail { address_mode: Absolute, op_size: 3 }),
+
+        0xF6 => INC(OpDetail { address_mode: DirectPageX, op_size: 2 }),
         0xFB => XCE,
         0xFC => JSR(OpDetail { address_mode: AbsoluteIndirectX, op_size: 3 }),
+        0xFE => INC(OpDetail { address_mode: AbsoluteX, op_size: 3 }),
         
         _ => todo!("Unsupported opcode: [{:X}]", opcode),
     }

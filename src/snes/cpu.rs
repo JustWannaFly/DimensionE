@@ -496,6 +496,10 @@ impl CPU {
                 bank = self.data_bank;
                 address = self.y.wrapping_add(combine_bytes(bytes[1], bytes[0]));
             }
+            AddressMode::Accumulator => {
+                bank = self.data_bank; // TODO verify
+                address = self.accumulator;
+            }
             AddressMode::DirectPage => {
                 bank = 0x00;
                 address = self.direct_page.wrapping_add(bytes[0] as u16);
