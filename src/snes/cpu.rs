@@ -546,6 +546,12 @@ impl CPU {
                     .direct_page
                     .wrapping_add(self.x.wrapping_add(bytes[0] as u16));
             }
+            AddressMode::DirectPageY => {
+                bank = 0x00;
+                address = self
+                    .direct_page
+                    .wrapping_add(self.y.wrapping_add(bytes[0] as u16));
+            }
             AddressMode::Immediate => return None,
             AddressMode::StackRelative => {
                 bank = 0x00;
