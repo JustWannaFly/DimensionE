@@ -102,14 +102,9 @@ impl MemoryController {
         let bank = self.memory_data.get(bank as usize).unwrap();
         *(&bank[address as usize])
     }
-    pub fn write(&mut self, bank: u8, address: u16, bytes: Vec<u8>) {
-        // TODO implement timing logic
-        let mut index = address;
-        bytes.iter().for_each(|byte| {
-            self.memory_data[bank as usize][index as usize] = *byte;
-            self.write_mirrors(bank, index, *byte);
-            index = index.wrapping_add(1);
-        });
+    pub fn write(&mut self, bank: u8, address: u16, byte: u8) {
+        self.memory_data[bank as usize][address as usize] = byte;
+        self.write_mirrors(bank, address, byte);
     }
     fn write_mirrors(&mut self, bank: u8, address: u16, byte: u8) {
         if (bank <= 0x3F && address <= 0x1FFF)
@@ -132,12 +127,11 @@ impl MemoryController {
         self.cpu_bus.address = address;
         return self.cycles_to_access(bank, address);
     }
-    pub fn cpu_bus_read8(&self) -> u8 {
+    pub fn cpu_bus_read(&self) -> u8 {
         self.read_bus(&self.cpu_bus)
     }
-    pub fn cpu_bus_write16(&mut self, value: u16) {
-        let bytes = split_bytes(value);
-        self.write(self.cpu_bus.bank, self.cpu_bus.address, vec![bytes.0, bytes.1]);
+    pub fn cpu_bus_write(&mut self, value: u8) {
+        self.write(self.cpu_bus.bank, self.cpu_bus.address, value);
     }
     fn read_bus(&self, bus: &Bus) -> u8 {
         if !self.cart_loaded {
