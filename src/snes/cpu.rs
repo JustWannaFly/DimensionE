@@ -105,7 +105,6 @@ impl CPU {
     fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.state {
             LoadingOp => {
-                // TODO I don't trust op_cycles is accurate. debug/fix/validate it's behavior
                 println!("Cycles for op: [{}]", self.op_cycles);
                 self.ticks_per_cycle =
                     memory_controller.cpu_bus_set_location(self.program_bank, self.program_counter);
@@ -114,13 +113,12 @@ impl CPU {
                 self.op = lookup_opcode(op_code);
                 self.args = vec![];
                 self.operand = None;
-                self.op_cycles = 1;
+                self.op_cycles = 0;
                 println!("[{:X}:{:X}] [{:X}] [{:?}]",
                     self.program_bank, self.program_counter, op_code, self.op
                 );
             }
             Processing => {
-                print!("cycling op");
                 self.execute_op_cycle(memory_controller);
             }
         }
@@ -138,20 +136,25 @@ impl CPU {
                     Some(address) => {
                         memory_controller.cpu_bus_set_location(0, address);
                         memory_controller.cpu_bus_write16(0);
+                        self.advance_program_counter_with_address_mode(&address_mode);
                     }
                     None => {
-                        self.cycle_operand_loading(&address_mode, memory_controller);
+                        self.cycle_operand_loading(&address_mode, memory_controller, false);
                     }
                 }
                 
-                self.advance_program_counter_with_address_mode(&address_mode);
             }
             _ => todo!("op_code: [{:?}]", self.op),
         }
     }
 
-    fn cycle_operand_loading(&mut self, address_mode: &AddressMode, memory_controller: &mut MemoryController) {
-        if self.cycle_arg_loading(&address_mode, memory_controller, false) {
+    fn cycle_operand_loading(&mut self, address_mode: &AddressMode, memory_controller: &mut MemoryController, is8bit: bool) {
+        self.load_one_arg(&address_mode, memory_controller, false);
+        let mut op_size = get_op_size(address_mode);
+        if is8bit && matches!(address_mode, AddressMode::Immediate) {
+            op_size -= 1;
+        }
+        if (self.args.len() as u16) < (op_size - 1) {
             return ()
         }
         self.operand = Some(self.build_operand_from_args(address_mode));
@@ -166,7 +169,7 @@ impl CPU {
     /// This will load one arg if the address mode needs more args than are present 
     /// 
     /// returns a flag indicating if this processed this cycle
-    fn cycle_arg_loading(
+    fn load_one_arg(
         &mut self,
         address_mode: &AddressMode,
         memory_controller: &mut MemoryController,
@@ -178,7 +181,7 @@ impl CPU {
                 if is8bit && matches!(address_mode, AddressMode::Immediate) {
                     op_size -= 1;
                 }
-                if self.args.len() as u16 == op_size {
+                if self.args.len() as u16 == op_size - 1 {
                     return false;
                 }
                 memory_controller.cpu_bus_set_location(
