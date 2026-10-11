@@ -4,6 +4,7 @@ use crate::snes::cpu::instrusctions::{
     }, Operation::{ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRA, BRK, BRL, BVC, BVS, CLC, CLD, CLI, CLV, CMP, COP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JML, JMP, JSL, JSR, LDA, LDX, LDY, LSR, MVN, MVP, NOP, ORA, PEA, PEI, PER, PHA, PHB, PHD, PHK, PHP, PHX, PHY, PLA, PLB, PLD, PLP, PLX, PLY, REP, ROL, ROR, RTI, RTL, RTS, SBC, SEC, SED, SEI, SEP, STA, STP, STX, STY, STZ, TAX, TAY, TCD, TCS, TDC, TRB, TSB, TSC, TSX, TXA, TXS, TXY, TYA, TYX, WAI, WDM, XBA, XCE},
 };
 
+#[derive(Debug)]
 pub enum Operation {
     ADC(OpDetail), // Add with Carry
     AND(OpDetail),              // And Accumulator with Memory
@@ -119,11 +120,15 @@ pub enum Operation {
     XCE, // Exchange Carry and Emulation Bits
 }
 
+#[derive(Debug)]
+#[derive(Clone, Copy)]
 pub struct OpDetail {
     pub address_mode: AddressMode,
     pub op_size: u16,
 }
 
+#[derive(Debug)]
+#[derive(Clone, Copy)]
 pub enum AddressMode {
     Absolute,
     AbsoluteIndirect,

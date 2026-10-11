@@ -1,9 +1,8 @@
-
 use crate::{
     bytes::{combine_bytes, split_bytes},
     snes::{
         cpu::{
-            CpuState::LoadingOp,
+            CpuState::{LoadingOp, Processing},
             instrusctions::{AddressMode, OpDetail},
         },
         memory::MemoryController,
@@ -23,7 +22,8 @@ const OVERFLOW_MASK: u8 = 0b0100_0000;
 const NEGATIVE_MASK: u8 = 0b1000_0000;
 
 enum CpuState {
-    LoadingOp(bool),
+    LoadingOp,
+    Processing,
 }
 
 pub struct CPU {
@@ -40,8 +40,10 @@ pub struct CPU {
     emulation_flag: bool,
     ticks_per_cycle: u8,
     mc_last_tick: u8,
-    op_code: u8,
+
+    op: Operation,
     state: CpuState,
+    op_cycles: u8,
 }
 impl CPU {
     pub fn new() -> CPU {
@@ -58,8 +60,10 @@ impl CPU {
             emulation_flag: true,
             ticks_per_cycle: 6,
             mc_last_tick: 0_u8.wrapping_sub(6),
-            op_code: 0,
-            state: LoadingOp(false),
+
+            op: Operation::NOP,
+            state: LoadingOp,
+            op_cycles: 0,
         }
     }
     pub fn initialize(&mut self, program_start: u16) {
@@ -73,33 +77,66 @@ impl CPU {
         self.stack_pointer = 0x01FF;
         self.emulation_flag = true;
         self.program_counter = program_start;
-        self.op_code = 0;
-        self.state = LoadingOp(false);
+        self.op = Operation::NOP;
+        self.state = LoadingOp;
+        self.op_cycles = 0;
     }
     pub fn tick(&mut self, master_clock_tick: u8, memory_controller: &mut MemoryController) {
         print!("|");
         if master_clock_tick.wrapping_sub(self.ticks_per_cycle) == self.mc_last_tick {
             println!("");
+            self.op_cycles += 1;
             self.mc_last_tick = master_clock_tick;
             self.process(memory_controller);
         }
     }
     fn process(&mut self, memory_controller: &mut MemoryController) {
-        match self.state {
-            LoadingOp(set_bus_location) => {
-                if set_bus_location {
-                    self.op_code = memory_controller.read_cpu_bus();
-                    println!("loaded op_code [{:X}]", self.op_code);
-                    todo!("still working")
-                } else {
-                    self.ticks_per_cycle = memory_controller
-                        .set_cpu_bus_location(self.program_bank, self.program_counter);
-                        self.state = LoadingOp(true);
-                    println!("set op address [{:X}:{:X}]", self.program_bank, self.program_counter);
-                }
+        match &self.state {
+            LoadingOp => {
+                self.ticks_per_cycle =
+                    memory_controller.set_cpu_bus_location(self.program_bank, self.program_counter);
+                self.state = Processing;
+                println!(
+                    "set op address [{:X}:{:X}]",
+                    self.program_bank, self.program_counter
+                );
+            }
+            Processing => {
+                self.op = lookup_opcode(memory_controller.read_cpu_bus());
+                self.execute_op_cycle(memory_controller);
             }
         }
     }
+
+    fn execute_op_cycle(&mut self, memory_controller: &mut MemoryController) {
+        println!("Processing OP [{:?}]", self.op);
+        match self.op {
+            Operation::SEI => {
+                self.update_processor_status(None, None, Some(true), None, None, None, None, None);
+
+                self.advance_program_counter(1);
+            }
+            Operation::STZ(detail) => {
+                let save_location = self.resolve_address(memory_controller, &detail).unwrap();
+                let write_bytes: Vec<u8>;
+
+                if self.processor_status & ACCUMULATOR_MASK == 0 {
+                    write_bytes = vec![0, 0]
+                } else {
+                    write_bytes = vec![0]
+                }
+
+                memory_controller.write(save_location.0, save_location.1, write_bytes);
+                self.advance_program_counter_with_detail(&detail);
+            }
+            _ => todo!("op_code: [{:?}]", self.op),
+        }
+    }
+
+    // self.op_code = memory_controller.read_cpu_bus();
+    //                 println!("loaded op_code [{:X}]", self.op_code);
+    //                 todo!("still working")
+
     /// This will probably need to be broken out when implementing timing
     pub fn execute_instruction(&mut self, memory_controller: &mut MemoryController) {
         let op_code = memory_controller.read_byte(self.program_bank, self.program_counter);
@@ -365,10 +402,6 @@ impl CPU {
                 );
                 self.advance_program_counter(2);
             }
-            Operation::SEI => {
-                self.update_processor_status(None, None, Some(true), None, None, None, None, None);
-                self.program_counter = self.program_counter.wrapping_add(1);
-            }
             Operation::SEP => {
                 let clear_flags = self.read_op_args(memory_controller, 1)[0];
                 let carry = if clear_flags & CARRY_MASK != 0 {
@@ -432,19 +465,6 @@ impl CPU {
                     write_bytes = vec![accumulator_bytes.0, accumulator_bytes.1]
                 } else {
                     write_bytes = vec![accumulator_bytes.0]
-                }
-
-                memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.advance_program_counter_with_detail(&detail);
-            }
-            Operation::STZ(detail) => {
-                let save_location = self.resolve_address(memory_controller, &detail).unwrap();
-                let write_bytes: Vec<u8>;
-
-                if self.processor_status & ACCUMULATOR_MASK == 0 {
-                    write_bytes = vec![0, 0]
-                } else {
-                    write_bytes = vec![0]
                 }
 
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
@@ -759,6 +779,9 @@ impl CPU {
         self.advance_program_counter(op_size);
     }
     fn advance_program_counter(&mut self, op_size: u16) {
+        dbg!(self.op_cycles);
+        self.state = LoadingOp;
+        self.op_cycles = 0;
         self.program_counter = self.program_counter.wrapping_add(op_size);
     }
     fn stack_push_8(&mut self, memory_controller: &mut MemoryController, value: u8) {
