@@ -2,7 +2,7 @@ use crate::{
     bytes::{combine_bytes, split_bytes},
     snes::{
         cpu::{
-            CpuState::{LoadingOp, Processing},
+            ProcessingState::{LoadingOp, Processing},
             instrusctions::{AddressMode, get_op_size},
         },
         memory::MemoryController,
@@ -23,15 +23,17 @@ const NEGATIVE_MASK: u8 = 0b1000_0000;
 
 const DEFAULT_TICKS_PER_CYCLE: u8 = 6;
 
-enum CpuState {
+enum ProcessingState {
     LoadingOp,
     Processing,
 }
 
-struct ProcessingData {
+struct ProcessingDetails {
     op: Operation,
     args: Vec<u8>,
     operand: Option<u16>,
+    op_cycles: u8,
+    write_in_progress: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -48,12 +50,8 @@ pub struct CPU {
     ticks_per_cycle: u8,
     ticks_since_cycle: u8,
 
-    op: Operation,
-    state: CpuState,
-    args: Vec<u8>,
-    operand: Option<u16>,
-    op_cycles: u8,
-    write_in_progress: bool,
+    processing_state: ProcessingState,
+    processing_data: ProcessingDetails,
 }
 impl CPU {
     pub fn new() -> CPU {
@@ -71,12 +69,14 @@ impl CPU {
             ticks_per_cycle: DEFAULT_TICKS_PER_CYCLE,
             ticks_since_cycle: DEFAULT_TICKS_PER_CYCLE,
 
-            op: Operation::NOP,
-            state: LoadingOp,
-            args: vec![],
-            operand: None,
-            op_cycles: 0,
-            write_in_progress: false,
+            processing_state: LoadingOp,
+            processing_data: ProcessingDetails {
+                op: Operation::NOP,
+                args: vec![],
+                operand: None,
+                op_cycles: 0,
+                write_in_progress: false,
+            },
         }
     }
     pub fn initialize(&mut self, program_start: u16) {
@@ -90,36 +90,43 @@ impl CPU {
         self.stack_pointer = 0x01FF;
         self.emulation_flag = true;
         self.program_counter = program_start;
-        self.op = Operation::NOP;
-        self.state = LoadingOp;
-        self.op_cycles = 0;
+        self.processing_state = LoadingOp;
+        self.processing_data = ProcessingDetails {
+            op: Operation::NOP,
+            args: vec![],
+            operand: None,
+            op_cycles: 0,
+            write_in_progress: false,
+        };
     }
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
-        print!("|");
         self.ticks_since_cycle += 1;
         if self.ticks_since_cycle >= self.ticks_per_cycle {
             println!("");
-            self.op_cycles += 1;
+            self.processing_data.op_cycles += 1;
             self.ticks_since_cycle = 0;
             self.process_cycle(memory_controller);
         }
+        print!("|");
     }
     fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
-        match &self.state {
+        match &self.processing_state {
             LoadingOp => {
-                println!("Cycles for op: [{}]", self.op_cycles);
+                println!("Cycles for op: [{}]", self.processing_data.op_cycles);
                 self.set_bus_location(memory_controller, self.program_bank, self.program_counter);
                 let op_code = memory_controller.cpu_bus_read();
-                self.op = lookup_opcode(op_code);
-                self.args = vec![];
-                self.operand = None;
-                self.op_cycles = 0;
-                self.write_in_progress = false;
+                self.processing_data = ProcessingDetails {
+                    op: lookup_opcode(op_code),
+                    args: vec![],
+                    operand: None,
+                    op_cycles: 0,
+                    write_in_progress: false,
+                };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
-                    self.program_bank, self.program_counter, op_code, self.op
+                    self.program_bank, self.program_counter, op_code, self.processing_data.op
                 );
-                self.state = Processing;
+                self.processing_state = Processing;
             }
             Processing => {
                 self.execute_op_cycle(memory_controller);
@@ -128,18 +135,19 @@ impl CPU {
     }
 
     fn execute_op_cycle(&mut self, memory_controller: &mut MemoryController) {
-        match self.op {
+        // TODO add per cycle logging option
+        match self.processing_data.op {
             Operation::SEI => {
                 self.update_processor_status(None, None, Some(true), None, None, None, None, None);
 
                 self.advance_program_counter(1);
             }
-            Operation::STZ(address_mode) => match self.operand {
+            Operation::STZ(address_mode) => match self.processing_data.operand {
                 Some(address) => {
-                    if !self.write_in_progress {
+                    if !self.processing_data.write_in_progress {
                         self.set_bus_location(memory_controller, 0, address);
                         memory_controller.cpu_bus_write(0);
-                        self.write_in_progress = true
+                        self.processing_data.write_in_progress = true
                     } else {
                         self.set_bus_location(memory_controller, 0, address.wrapping_add(1));
                         memory_controller.cpu_bus_write(0);
@@ -150,7 +158,7 @@ impl CPU {
                     self.cycle_operand_loading(&address_mode, memory_controller, false);
                 }
             },
-            _ => todo!("op_code: [{:?}]", self.op),
+            _ => todo!("[Operation::{:?}]", self.processing_data.op),
         }
     }
 
@@ -165,16 +173,16 @@ impl CPU {
         if is8bit && matches!(address_mode, AddressMode::Immediate) {
             op_size -= 1;
         }
-        if (self.args.len() as u16) < (op_size - 1) {
+        if (self.processing_data.args.len() as u16) < (op_size - 1) {
             return ();
         }
-        self.operand = Some(self.build_operand_from_args(address_mode));
+        self.processing_data.operand = Some(self.build_operand_from_args(address_mode));
     }
     fn build_operand_from_args(&self, address_mode: &AddressMode) -> u16 {
         match address_mode {
-            AddressMode::Absolute => combine_bytes(self.args[1], self.args[0]),
+            AddressMode::Absolute => combine_bytes(self.processing_data.args[1], self.processing_data.args[0]),
 
-            _ => todo!("unimplemented address mode [{:?}]", address_mode),
+            _ => todo!("[AddressMode::{:?}]", address_mode),
         }
     }
     fn set_bus_location(
@@ -191,9 +199,9 @@ impl CPU {
             self.program_bank,
             self.program_counter
                 .wrapping_add(1)
-                .wrapping_add(self.args.len() as u16),
+                .wrapping_add(self.processing_data.args.len() as u16),
         );
-        self.args.push(memory_controller.cpu_bus_read());
+        self.processing_data.args.push(memory_controller.cpu_bus_read());
     }
     fn _resolve_address(
         &self,
@@ -316,7 +324,7 @@ impl CPU {
 
         Some((bank, address))
     }
-    
+
     /// Processor flags
     /// Bits: 7   6   5   4   3   2   1   0
     ///                                  |e├─── Emulation: 0 = Native Mode
@@ -429,7 +437,7 @@ impl CPU {
         self.advance_program_counter(op_size);
     }
     fn advance_program_counter(&mut self, op_size: u16) {
-        self.state = LoadingOp;
+        self.processing_state = LoadingOp;
         self.program_counter = self.program_counter.wrapping_add(op_size);
     }
     fn stack_push_8(&mut self, memory_controller: &mut MemoryController, value: u8) {
