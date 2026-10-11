@@ -1,4 +1,4 @@
-use crate::snes::memory::cartridge::Cartridge;
+use crate::{bytes::split_bytes, snes::memory::cartridge::Cartridge};
 
 pub mod cartridge;
 
@@ -127,15 +127,19 @@ impl MemoryController {
     }
     /// Sets the cpu bus to a given location and returns the number 
     /// of master cycles needed to access that location in memory
-    pub fn set_cpu_bus_location(&mut self, bank: u8, address: u16) -> u8 {
+    pub fn cpu_bus_set_location(&mut self, bank: u8, address: u16) -> u8 {
         self.cpu_bus.bank = bank;
         self.cpu_bus.address = address;
         return self.cycles_to_access(bank, address);
     }
-    pub fn read_cpu_bus(&self) -> u8 {
+    pub fn cpu_bus_read8(&self) -> u8 {
         self.read_bus(&self.cpu_bus)
     }
-    pub fn read_bus(&self, bus: &Bus) -> u8 {
+    pub fn cpu_bus_write16(&mut self, value: u16) {
+        let bytes = split_bytes(value);
+        self.write(self.cpu_bus.bank, self.cpu_bus.address, vec![bytes.0, bytes.1]);
+    }
+    fn read_bus(&self, bus: &Bus) -> u8 {
         if !self.cart_loaded {
             return 0;
         }

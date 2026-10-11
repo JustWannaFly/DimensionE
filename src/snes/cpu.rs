@@ -3,7 +3,7 @@ use crate::{
     snes::{
         cpu::{
             CpuState::{LoadingOp, Processing},
-            instrusctions::{AddressMode, OpDetail},
+            instrusctions::{AddressMode, get_op_size},
         },
         memory::MemoryController,
     },
@@ -21,11 +21,18 @@ const ACCUMULATOR_MASK: u8 = 0b0010_0000;
 const OVERFLOW_MASK: u8 = 0b0100_0000;
 const NEGATIVE_MASK: u8 = 0b1000_0000;
 
+const DEFAULT_TICKS_PER_CYCLE: u8 = 6;
+
 enum CpuState {
     LoadingOp,
     Processing,
 }
 
+struct ProcessingData {
+    op: Operation,
+    args: Vec<u8>,
+    operand: Option<u16>,
+}
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
     accumulator: u16,
@@ -39,10 +46,12 @@ pub struct CPU {
     program_counter: u16,
     emulation_flag: bool,
     ticks_per_cycle: u8,
-    mc_last_tick: u8,
+    ticks_since_cycle: u8,
 
     op: Operation,
     state: CpuState,
+    args: Vec<u8>,
+    operand: Option<u16>,
     op_cycles: u8,
 }
 impl CPU {
@@ -58,18 +67,20 @@ impl CPU {
             program_bank: 0x0000,
             program_counter: 0x0000_0000,
             emulation_flag: true,
-            ticks_per_cycle: 6,
-            mc_last_tick: 0_u8.wrapping_sub(6),
+            ticks_per_cycle: DEFAULT_TICKS_PER_CYCLE,
+            ticks_since_cycle: DEFAULT_TICKS_PER_CYCLE,
 
             op: Operation::NOP,
             state: LoadingOp,
+            args: vec![],
+            operand: None,
             op_cycles: 0,
         }
     }
     pub fn initialize(&mut self, program_start: u16) {
         // TODO initialize all registers
-        self.ticks_per_cycle = 6;
-        self.mc_last_tick = 0_u8.wrapping_sub(6);
+        self.ticks_per_cycle = DEFAULT_TICKS_PER_CYCLE;
+        self.ticks_since_cycle = DEFAULT_TICKS_PER_CYCLE;
 
         self.data_bank = 0x0000;
         self.direct_page = 0x0000_0000;
@@ -81,62 +92,107 @@ impl CPU {
         self.state = LoadingOp;
         self.op_cycles = 0;
     }
-    pub fn tick(&mut self, master_clock_tick: u8, memory_controller: &mut MemoryController) {
+    pub fn tick(&mut self, memory_controller: &mut MemoryController) {
         print!("|");
-        if master_clock_tick.wrapping_sub(self.ticks_per_cycle) == self.mc_last_tick {
+        self.ticks_since_cycle += 1;
+        if self.ticks_since_cycle >= self.ticks_per_cycle {
             println!("");
             self.op_cycles += 1;
-            self.mc_last_tick = master_clock_tick;
-            self.process(memory_controller);
+            self.ticks_since_cycle = 0;
+            self.process_cycle(memory_controller);
         }
     }
-    fn process(&mut self, memory_controller: &mut MemoryController) {
+    fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.state {
             LoadingOp => {
+                // TODO I don't trust op_cycles is accurate. debug/fix/validate it's behavior
+                println!("Cycles for op: [{}]", self.op_cycles);
                 self.ticks_per_cycle =
-                    memory_controller.set_cpu_bus_location(self.program_bank, self.program_counter);
+                    memory_controller.cpu_bus_set_location(self.program_bank, self.program_counter);
                 self.state = Processing;
-                println!(
-                    "set op address [{:X}:{:X}]",
-                    self.program_bank, self.program_counter
+                let op_code = memory_controller.cpu_bus_read8();
+                self.op = lookup_opcode(op_code);
+                self.args = vec![];
+                self.operand = None;
+                self.op_cycles = 1;
+                println!("[{:X}:{:X}] [{:X}] [{:?}]",
+                    self.program_bank, self.program_counter, op_code, self.op
                 );
             }
             Processing => {
-                self.op = lookup_opcode(memory_controller.read_cpu_bus());
+                print!("cycling op");
                 self.execute_op_cycle(memory_controller);
             }
         }
     }
 
     fn execute_op_cycle(&mut self, memory_controller: &mut MemoryController) {
-        println!("Processing OP [{:?}]", self.op);
         match self.op {
             Operation::SEI => {
                 self.update_processor_status(None, None, Some(true), None, None, None, None, None);
 
                 self.advance_program_counter(1);
             }
-            Operation::STZ(detail) => {
-                let save_location = self.resolve_address(memory_controller, &detail).unwrap();
-                let write_bytes: Vec<u8>;
-
-                if self.processor_status & ACCUMULATOR_MASK == 0 {
-                    write_bytes = vec![0, 0]
-                } else {
-                    write_bytes = vec![0]
+            Operation::STZ(address_mode) => {
+                match self.operand {
+                    Some(address) => {
+                        memory_controller.cpu_bus_set_location(0, address);
+                        memory_controller.cpu_bus_write16(0);
+                    }
+                    None => {
+                        self.cycle_operand_loading(&address_mode, memory_controller);
+                    }
                 }
-
-                memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.advance_program_counter_with_detail(&detail);
+                
+                self.advance_program_counter_with_address_mode(&address_mode);
             }
             _ => todo!("op_code: [{:?}]", self.op),
         }
     }
 
-    // self.op_code = memory_controller.read_cpu_bus();
-    //                 println!("loaded op_code [{:X}]", self.op_code);
-    //                 todo!("still working")
-
+    fn cycle_operand_loading(&mut self, address_mode: &AddressMode, memory_controller: &mut MemoryController) {
+        if self.cycle_arg_loading(&address_mode, memory_controller, false) {
+            return ()
+        }
+        self.operand = Some(self.build_operand_from_args(address_mode));
+    }
+    fn build_operand_from_args(&self, address_mode: &AddressMode) -> u16 {
+        match address_mode {
+            AddressMode::Absolute => combine_bytes(self.args[1], self.args[0]),
+            
+            _ => todo!("unimplemented address mode [{:?}]", address_mode)
+        }
+    }
+    /// This will load one arg if the address mode needs more args than are present 
+    /// 
+    /// returns a flag indicating if this processed this cycle
+    fn cycle_arg_loading(
+        &mut self,
+        address_mode: &AddressMode,
+        memory_controller: &mut MemoryController,
+        is8bit: bool,
+    ) -> bool {
+        match &mut self.state {
+            Processing => {
+                let mut op_size = get_op_size(address_mode);
+                if is8bit && matches!(address_mode, AddressMode::Immediate) {
+                    op_size -= 1;
+                }
+                if self.args.len() as u16 == op_size {
+                    return false;
+                }
+                memory_controller.cpu_bus_set_location(
+                    self.program_bank,
+                    self.program_counter
+                        .wrapping_add(1)
+                        .wrapping_add(self.args.len() as u16),
+                );
+                self.args.push(memory_controller.cpu_bus_read8());
+                true
+            }
+            _ => panic!("Should not load args when not processing"),
+        }
+    }
     /// This will probably need to be broken out when implementing timing
     pub fn execute_instruction(&mut self, memory_controller: &mut MemoryController) {
         let op_code = memory_controller.read_byte(self.program_bank, self.program_counter);
@@ -146,10 +202,10 @@ impl CPU {
         );
         let operation = lookup_opcode(op_code);
         match operation {
-            Operation::ADC(detail) => {
+            Operation::ADC(address_mode) => {
                 let mut sum: u16;
                 let flag_shift: u8;
-                let operand = self.fetch_operand(memory_controller, &detail);
+                let operand = self.fetch_operand(memory_controller, &address_mode);
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
                     flag_shift = 15;
                 } else {
@@ -182,10 +238,10 @@ impl CPU {
                     Some(is_overflow),
                     Some(is_negative),
                 );
-                self.advance_program_counter_with_detail(&detail);
+                self.advance_program_counter_with_address_mode(&address_mode);
             }
-            Operation::AND(detail) => {
-                let operand = self.fetch_operand(memory_controller, &detail);
+            Operation::AND(address_mode) => {
+                let operand = self.fetch_operand(memory_controller, &address_mode);
 
                 let result = self.accumulator & operand;
                 let is_negative = if self.processor_status & ACCUMULATOR_MASK == 0 {
@@ -204,7 +260,7 @@ impl CPU {
                     None,
                     Some(is_negative),
                 );
-                self.advance_program_counter_with_detail(&detail);
+                self.advance_program_counter_with_address_mode(&address_mode);
             }
             Operation::CLC => {
                 self.update_processor_status(Some(false), None, None, None, None, None, None, None);
@@ -222,13 +278,17 @@ impl CPU {
                 self.update_processor_status(None, None, None, None, None, None, Some(false), None);
                 self.advance_program_counter(1);
             }
-            Operation::JML(detail) => {
-                let location = self.resolve_address(memory_controller, &detail).unwrap();
+            Operation::JML(address_mode) => {
+                let location = self
+                    .resolve_address(memory_controller, &address_mode)
+                    .unwrap();
                 self.program_bank = location.0;
                 self.program_counter = location.1;
             }
-            Operation::JMP(detail) => {
-                let location = self.resolve_address(memory_controller, &detail).unwrap();
+            Operation::JMP(address_mode) => {
+                let location = self
+                    .resolve_address(memory_controller, &address_mode)
+                    .unwrap();
                 self.program_counter = location.1;
             }
             Operation::JSL => {
@@ -238,16 +298,19 @@ impl CPU {
                 self.program_bank = arg_bytes[2];
                 self.program_counter = combine_bytes(arg_bytes[1], arg_bytes[0]);
             }
-            Operation::JSR(detail) => {
+            Operation::JSR(address_mode) => {
                 self.stack_push_16(
                     memory_controller,
-                    self.program_counter.wrapping_add(detail.op_size),
+                    self.program_counter
+                        .wrapping_add(instrusctions::get_op_size(&address_mode)),
                 );
-                let location = self.resolve_address(memory_controller, &detail).unwrap();
+                let location = self
+                    .resolve_address(memory_controller, &address_mode)
+                    .unwrap();
                 self.program_counter = location.1;
             }
-            Operation::LDA(detail) => {
-                let value = self.fetch_operand(memory_controller, &detail);
+            Operation::LDA(address_mode) => {
+                let value = self.fetch_operand(memory_controller, &address_mode);
                 let is_negative;
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
                     is_negative = value >> 15 != 0
@@ -267,25 +330,28 @@ impl CPU {
                 );
                 self.accumulator = value;
 
-                self.advance_program_counter_with_detail(&detail);
+                self.advance_program_counter_with_address_mode(&address_mode);
             }
-            Operation::LDY(detail) => {
+            Operation::LDY(address_mode) => {
                 let value;
                 let is8bit = self.processor_status & INDEX_REG_MASK != 0;
                 if is8bit {
-                    value = combine_bytes(0x0000, self.fetch_operand8(memory_controller, &detail))
+                    value = combine_bytes(
+                        0x0000,
+                        self.fetch_operand8(memory_controller, &address_mode),
+                    )
                 } else {
-                    value = self.fetch_operand16(memory_controller, &detail);
+                    value = self.fetch_operand16(memory_controller, &address_mode);
                 }
                 self.y = value;
-                self.advance_program_counter_detail_and_8bit(&detail, is8bit);
+                self.advance_program_counter_address_mode_and_8bit(&address_mode, is8bit);
             }
             Operation::NOP => {
                 self.advance_program_counter(1);
             }
-            Operation::ORA(detail) => {
+            Operation::ORA(address_mode) => {
                 let flag_shift: u8;
-                let operand = self.fetch_operand(memory_controller, &detail);
+                let operand = self.fetch_operand(memory_controller, &address_mode);
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
                     flag_shift = 15;
                 } else {
@@ -306,7 +372,7 @@ impl CPU {
                     Some(is_negative),
                 );
 
-                self.advance_program_counter_with_detail(&detail);
+                self.advance_program_counter_with_address_mode(&address_mode);
             }
             Operation::PHA => {
                 if self.processor_status & ACCUMULATOR_MASK == 0 {
@@ -456,8 +522,10 @@ impl CPU {
                 );
                 self.advance_program_counter(2);
             }
-            Operation::STA(detail) => {
-                let save_location = self.resolve_address(memory_controller, &detail).unwrap();
+            Operation::STA(address_mode) => {
+                let save_location = self
+                    .resolve_address(memory_controller, &address_mode)
+                    .unwrap();
                 let accumulator_bytes = split_bytes(self.accumulator);
                 let write_bytes;
 
@@ -468,7 +536,7 @@ impl CPU {
                 }
 
                 memory_controller.write(save_location.0, save_location.1, write_bytes);
-                self.advance_program_counter_with_detail(&detail);
+                self.advance_program_counter_with_address_mode(&address_mode);
             }
             Operation::TCD => {
                 self.direct_page = self.accumulator;
@@ -513,13 +581,16 @@ impl CPU {
     fn resolve_address(
         &self,
         memory_controller: &MemoryController,
-        op_detail: &OpDetail,
+        address_mode: &AddressMode,
     ) -> Option<(u8, u16)> {
         let bank;
         let address;
-        let bytes = self.read_op_args(memory_controller, op_detail.op_size - 1);
+        let bytes = self.read_op_args(
+            memory_controller,
+            instrusctions::get_op_size(address_mode) - 1,
+        );
 
-        match op_detail.address_mode {
+        match address_mode {
             AddressMode::Absolute => {
                 bank = self.data_bank;
                 address = combine_bytes(bytes[1], bytes[0]);
@@ -638,17 +709,25 @@ impl CPU {
             length,
         )
     }
-    fn fetch_operand(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u16 {
+    fn fetch_operand(
+        &self,
+        memory_controller: &MemoryController,
+        address_mode: &AddressMode,
+    ) -> u16 {
         if self.processor_status & ACCUMULATOR_MASK == 0 {
             // 16bit mode
-            return self.fetch_operand16(memory_controller, detail);
+            return self.fetch_operand16(memory_controller, address_mode);
         } else {
             // 8 bit
-            return combine_bytes(0x0000, self.fetch_operand8(memory_controller, detail));
+            return combine_bytes(0x0000, self.fetch_operand8(memory_controller, address_mode));
         }
     }
-    fn fetch_operand8(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u8 {
-        let lookup_location = self.resolve_address(memory_controller, detail);
+    fn fetch_operand8(
+        &self,
+        memory_controller: &MemoryController,
+        address_mode: &AddressMode,
+    ) -> u8 {
+        let lookup_location = self.resolve_address(memory_controller, address_mode);
         match lookup_location {
             Some(location) => {
                 return memory_controller.read_byte(location.0, location.1);
@@ -658,8 +737,12 @@ impl CPU {
             }
         }
     }
-    fn fetch_operand16(&self, memory_controller: &MemoryController, detail: &OpDetail) -> u16 {
-        let lookup_location = self.resolve_address(memory_controller, detail);
+    fn fetch_operand16(
+        &self,
+        memory_controller: &MemoryController,
+        address_mode: &AddressMode,
+    ) -> u16 {
+        let lookup_location = self.resolve_address(memory_controller, address_mode);
         match lookup_location {
             Some(location) => {
                 let operand_bytes = memory_controller.read(location.0, location.1, 2);
@@ -767,21 +850,23 @@ impl CPU {
         }
         self.processor_status = (self.processor_status & maintain_mask) | set_mask
     }
-    fn advance_program_counter_with_detail(&mut self, op_detail: &OpDetail) {
+    fn advance_program_counter_with_address_mode(&mut self, address_mode: &AddressMode) {
         let is8bit = self.processor_status & ACCUMULATOR_MASK != 0;
-        self.advance_program_counter_detail_and_8bit(op_detail, is8bit);
+        self.advance_program_counter_address_mode_and_8bit(address_mode, is8bit);
     }
-    fn advance_program_counter_detail_and_8bit(&mut self, op_detail: &OpDetail, is8bit: bool) {
-        let mut op_size = op_detail.op_size;
-        if matches!(op_detail.address_mode, AddressMode::Immediate) && is8bit {
+    fn advance_program_counter_address_mode_and_8bit(
+        &mut self,
+        address_mode: &AddressMode,
+        is8bit: bool,
+    ) {
+        let mut op_size = instrusctions::get_op_size(address_mode);
+        if matches!(address_mode, AddressMode::Immediate) && is8bit {
             op_size -= 1;
         }
         self.advance_program_counter(op_size);
     }
     fn advance_program_counter(&mut self, op_size: u16) {
-        dbg!(self.op_cycles);
         self.state = LoadingOp;
-        self.op_cycles = 0;
         self.program_counter = self.program_counter.wrapping_add(op_size);
     }
     fn stack_push_8(&mut self, memory_controller: &mut MemoryController, value: u8) {
