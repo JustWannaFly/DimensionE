@@ -169,11 +169,11 @@ impl CPU {
         is8bit: bool,
     ) {
         self.load_one_arg(memory_controller);
-        let mut op_size = get_op_size(address_mode);
+        let mut arg_count = get_op_size(address_mode) - 1;
         if is8bit && matches!(address_mode, AddressMode::Immediate) {
-            op_size -= 1;
+            arg_count -= 1;
         }
-        if (self.processing_data.args.len() as u16) < (op_size - 1) {
+        if (self.processing_data.args.len() as u16) < (arg_count) {
             return ();
         }
         self.processing_data.operand = Some(self.build_operand_from_args(address_mode));
