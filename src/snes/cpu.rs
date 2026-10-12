@@ -169,7 +169,25 @@ impl CPU {
                         }
                         _ => {
                             self.program_bank = 0x00;
-                            self.program_counter = combine_bytes(self.processing_data.args[1], self.processing_data.args[0]);
+                            self.program_counter = combine_bytes(
+                                self.processing_data.args[1],
+                                self.processing_data.args[0],
+                            );
+                            let flag = if self.emulation_flag {
+                                Some(true)
+                            } else {
+                                None
+                            };
+                            self.update_processor_status(
+                                None,
+                                None,
+                                Some(true),
+                                Some(false),
+                                flag,
+                                None,
+                                None,
+                                None,
+                            );
                             self.processing_state = LoadingOp;
                         }
                     }
@@ -423,7 +441,7 @@ impl CPU {
         memory_controller.read_byte(0x00, self.stack_pointer)
     }
     /// Pushes bytes to the stack one byte per cycle
-    /// 
+    ///
     /// panics if self.processing_data.write_count is >= stack_values.len()
     fn cycle_push_stack(
         &mut self,
