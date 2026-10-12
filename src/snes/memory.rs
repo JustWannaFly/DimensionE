@@ -1,6 +1,10 @@
-use crate::{bytes::split_bytes, snes::memory::cartridge::Cartridge};
+use crate::{snes::memory::cartridge::Cartridge};
 
 pub mod cartridge;
+
+const FAST_MEMORY_CYCLES: u8 = 6;
+const SLOW_MEMORY_CYCLES: u8 = 8;
+const XSLOW_MEMORY_CYCLES: u8 = 12;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemorySpeed {
@@ -36,8 +40,9 @@ impl MemoryController {
     }
     pub fn load_cart(&mut self, cartridge: &Cartridge) {
         self.cart_speed = match cartridge.header.speed {
-            MemorySpeed::Fast => 6,
-            MemorySpeed::Slow => 8,
+            MemorySpeed::Fast => FAST_MEMORY_CYCLES
+,
+            MemorySpeed::Slow => SLOW_MEMORY_CYCLES,
         };
         self.reset_vector = ((cartridge.read_byte(0x00, 0xFFFD).unwrap() as u16) << 8)
             + cartridge.read_byte(0x00, 0xFFFC).unwrap() as u16;
@@ -63,19 +68,23 @@ impl MemoryController {
         }
         match bank {
             0x00..0x40 => match address {
-                0x0000..0x2000 => 8,
-                0x2000..0x4000 => 6,
-                0x4000..0x4200 => 12,
-                0x4200..0x6000 => 6,
-                0x6000..=0xFFFF => 8,
+                0x0000..0x2000 => SLOW_MEMORY_CYCLES,
+                0x2000..0x4000 => FAST_MEMORY_CYCLES
+,
+                0x4000..0x4200 => XSLOW_MEMORY_CYCLES,
+                0x4200..0x6000 => FAST_MEMORY_CYCLES
+,
+                0x6000..=0xFFFF => SLOW_MEMORY_CYCLES,
             },
-            0x40..0x80 => 8,
+            0x40..0x80 => SLOW_MEMORY_CYCLES,
             0x80..0xC0 => match address {
-                0x0000..0x2000 => 8,
-                0x2000..0x4000 => 6,
-                0x4000..0x4200 => 12,
-                0x4200..0x6000 => 6,
-                0x6000..0x8000 => 8,
+                0x0000..0x2000 => SLOW_MEMORY_CYCLES,
+                0x2000..0x4000 => FAST_MEMORY_CYCLES
+,
+                0x4000..0x4200 => XSLOW_MEMORY_CYCLES,
+                0x4200..0x6000 => FAST_MEMORY_CYCLES
+,
+                0x6000..0x8000 => SLOW_MEMORY_CYCLES,
                 0x8000..=0xFFFF => self.cart_speed,
             },
             0xC0..=0xFF => self.cart_speed,
