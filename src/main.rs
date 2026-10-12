@@ -6,14 +6,14 @@ mod snes;
 mod bytes;
 fn main() {
     let cart = snes::memory::cartridge::Cartridge::new(
-        fs::read("roms/Chrono Trigger.sfc")
+        fs::read("roms/Zelda A Link to the Past.sfc")
             .expect("should be able to read a rom"),
     );
     let mut emulator = SnesEmulator::new();
     emulator.load_cartridge(&cart);
     let title_bytes = emulator.memory_controller.read(0, 0xFFC0, 21);
     println!("Rom Load check:: Title: [{}]", build_string(&title_bytes));
-    loop {
+    loop { // TODO limit loop speed to master clock speed
         emulator.tick();
     }
 

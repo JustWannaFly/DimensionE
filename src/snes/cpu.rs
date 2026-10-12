@@ -1,5 +1,5 @@
 use crate::{
-    bytes::{combine_bytes, split_bytes},
+    bytes::{check_bits, combine_bytes, split_bytes},
     snes::{
         cpu::{
             ProcessingState::{LoadingOp, Processing},
@@ -33,7 +33,8 @@ struct ProcessingDetails {
     args: Vec<u8>,
     operand: Option<u16>,
     op_cycles: u8,
-    write_in_progress: bool,
+    write_count: u8,
+    read_count: u8,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -75,7 +76,8 @@ impl CPU {
                 args: vec![],
                 operand: None,
                 op_cycles: 0,
-                write_in_progress: false,
+                write_count: 0,
+                read_count: 0,
             },
         }
     }
@@ -96,7 +98,8 @@ impl CPU {
             args: vec![],
             operand: None,
             op_cycles: 0,
-            write_in_progress: false,
+            write_count: 0,
+            read_count: 0,
         };
     }
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
@@ -113,14 +116,15 @@ impl CPU {
         match &self.processing_state {
             LoadingOp => {
                 println!("Cycles for op: [{}]", self.processing_data.op_cycles);
-                self.set_bus_location(memory_controller, self.program_bank, self.program_counter);
-                let op_code = memory_controller.cpu_bus_read();
+                let op_code =
+                    self.read_byte(memory_controller, self.program_bank, self.program_counter);
                 self.processing_data = ProcessingDetails {
                     op: lookup_opcode(op_code),
                     args: vec![],
                     operand: None,
                     op_cycles: 0,
-                    write_in_progress: false,
+                    write_count: 0,
+                    read_count: 0,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
@@ -129,39 +133,138 @@ impl CPU {
                 self.processing_state = Processing;
             }
             Processing => {
-                self.execute_op_cycle(memory_controller);
+                self.cycle_execute_op(memory_controller);
             }
         }
     }
 
-    fn execute_op_cycle(&mut self, memory_controller: &mut MemoryController) {
+    fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
         // TODO add per cycle logging option
         match self.processing_data.op {
+            Operation::BRK => {
+                // TODO verify cycle count
+                let mut stack_values = vec![];
+                let mut brk_vector_lookup = 0xFFE6_u16;
+                if !self.emulation_flag {
+                    stack_values.push(self.program_bank);
+                    brk_vector_lookup = 0xFFFE;
+                }
+                let return_address_bytes = split_bytes(self.program_counter.wrapping_add(2));
+                stack_values.push(return_address_bytes.1);
+                stack_values.push(return_address_bytes.0);
+                stack_values.push(self.processor_status);
+                if stack_values.len() as u8 > self.processing_data.write_count {
+                    self.cycle_push_stack(memory_controller, &stack_values);
+                } else {
+                    match self.processing_data.read_count {
+                        0 => {
+                            let byte = self.read_byte(memory_controller, 0, brk_vector_lookup);
+                            self.processing_data.args.push(byte);
+                            self.processing_data.read_count += 1;
+                        }
+                        1 => {
+                            let byte = self.read_byte(memory_controller, 0, brk_vector_lookup + 1);
+                            self.processing_data.args.push(byte);
+                            self.processing_data.read_count += 1;
+                        }
+                        _ => {
+                            self.program_bank = 0x00;
+                            self.program_counter = combine_bytes(self.processing_data.args[1], self.processing_data.args[0]);
+                            self.processing_state = LoadingOp;
+                        }
+                    }
+                }
+            }
+            Operation::LDA(address_mode) => {
+                let is8bit = check_bits(self.processor_status, ACCUMULATOR_MASK);
+                if let None = self.processing_data.operand {
+                    self.cycle_operand_loading(&address_mode, memory_controller, is8bit)
+                }
+                if let Some(operand) = self.processing_data.operand {
+                    self.accumulator = operand;
+                    self.advance_program_counter_with_address_mode(&address_mode, is8bit);
+                }
+            }
             Operation::SEI => {
                 self.update_processor_status(None, None, Some(true), None, None, None, None, None);
 
                 self.advance_program_counter(1);
             }
-            Operation::STZ(address_mode) => match self.processing_data.operand {
-                Some(address) => {
-                    if !self.processing_data.write_in_progress {
-                        self.set_bus_location(memory_controller, 0, address);
-                        memory_controller.cpu_bus_write(0);
-                        self.processing_data.write_in_progress = true
-                    } else {
-                        self.set_bus_location(memory_controller, 0, address.wrapping_add(1));
-                        memory_controller.cpu_bus_write(0);
-                        self.advance_program_counter_with_address_mode(&address_mode);
+            Operation::STZ(address_mode) => {
+                let is8bit = check_bits(self.processor_status, ACCUMULATOR_MASK);
+                match self.processing_data.operand {
+                    None => self.cycle_operand_loading(&address_mode, memory_controller, is8bit),
+                    Some(address) => {
+                        if is8bit {
+                            self.write_byte(memory_controller, 0x00, address, 0x00);
+                        } else {
+                            let is_complete =
+                                self.cycle_write_word(memory_controller, 0, address, 0);
+                            if is_complete {
+                                self.advance_program_counter_with_address_mode(
+                                    &address_mode,
+                                    is8bit,
+                                );
+                            }
+                        }
                     }
                 }
-                None => {
-                    self.cycle_operand_loading(&address_mode, memory_controller, false);
-                }
-            },
+            }
             _ => todo!("[Operation::{:?}]", self.processing_data.op),
         }
     }
-
+    /// uses the memory_controller's cpu bus to write a byte
+    fn write_byte(
+        &mut self,
+        memory_controller: &mut MemoryController,
+        bank: u8,
+        address: u16,
+        byte: u8,
+    ) {
+        self.set_bus_location(memory_controller, bank, address);
+        memory_controller.cpu_bus_write(byte);
+    }
+    /// Writes a 16 bit word to memory stored in little endian format at bank:address and bank:address+1
+    ///
+    /// returns a flag indicating if the writing is complete
+    fn cycle_write_word(
+        &mut self,
+        memory_controller: &mut MemoryController,
+        bank: u8,
+        address: u16,
+        word: u16,
+    ) -> bool {
+        if self.processing_data.write_count == 0 {
+            self.write_byte(memory_controller, bank, address, split_bytes(word).0);
+            self.processing_data.write_count += 1;
+            return false;
+        } else {
+            self.write_byte(
+                memory_controller,
+                bank,
+                address.wrapping_add(1),
+                split_bytes(word).1,
+            );
+            return true;
+        }
+    }
+    fn read_byte(
+        &mut self,
+        memory_controller: &mut MemoryController,
+        bank: u8,
+        address: u16,
+    ) -> u8 {
+        self.set_bus_location(memory_controller, bank, address);
+        memory_controller.cpu_bus_read()
+    }
+    fn set_bus_location(
+        &mut self,
+        memory_controller: &mut MemoryController,
+        bank: u8,
+        address: u16,
+    ) {
+        self.ticks_per_cycle = memory_controller.cpu_bus_set_location(bank, address);
+    }
     fn cycle_operand_loading(
         &mut self,
         address_mode: &AddressMode,
@@ -176,153 +279,28 @@ impl CPU {
         if (self.processing_data.args.len() as u16) < (arg_count) {
             return ();
         }
-        self.processing_data.operand = Some(self.build_operand_from_args(address_mode));
+        self.processing_data.operand = Some(self.build_operand_from_args(address_mode, is8bit));
     }
-    fn build_operand_from_args(&self, address_mode: &AddressMode) -> u16 {
+    fn build_operand_from_args(&self, address_mode: &AddressMode, is8bit: bool) -> u16 {
+        let args = &self.processing_data.args;
         match address_mode {
-            AddressMode::Absolute => combine_bytes(self.processing_data.args[1], self.processing_data.args[0]),
+            AddressMode::Absolute => combine_bytes(args[1], args[0]),
+            AddressMode::Immediate => {
+                let low_byte = args[0];
+                let high_byte = if is8bit { 0x0000 } else { args[1] };
+                combine_bytes(high_byte, low_byte)
+            }
 
             _ => todo!("[AddressMode::{:?}]", address_mode),
         }
     }
-    fn set_bus_location(
-        &mut self,
-        memory_controller: &mut MemoryController,
-        bank: u8,
-        address: u16,
-    ) {
-        self.ticks_per_cycle = memory_controller.cpu_bus_set_location(bank, address);
-    }
     fn load_one_arg(&mut self, memory_controller: &mut MemoryController) {
-        self.set_bus_location(
-            memory_controller,
-            self.program_bank,
-            self.program_counter
-                .wrapping_add(1)
-                .wrapping_add(self.processing_data.args.len() as u16),
-        );
-        self.processing_data.args.push(memory_controller.cpu_bus_read());
-    }
-    fn _resolve_address(
-        &self,
-        memory_controller: &MemoryController,
-        address_mode: &AddressMode,
-    ) -> Option<(u8, u16)> {
-        let bank;
-        let address;
-        let args = vec![];
-
-        match address_mode {
-            AddressMode::Absolute => {
-                bank = self.data_bank;
-                address = combine_bytes(args[1], args[0]);
-            }
-            AddressMode::AbsoluteIndirect => {
-                bank = 0x00;
-                let pointer = combine_bytes(args[1], args[0]);
-                let addr_bytes = memory_controller.read(0, pointer, 2);
-                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
-            }
-            AddressMode::AbsoluteIndirectLong => {
-                let pointer = combine_bytes(args[1], args[0]);
-                let addr_bytes = memory_controller.read(0, pointer, 3);
-                bank = addr_bytes[2];
-                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
-            }
-            AddressMode::AbsoluteIndirectX => {
-                bank = 0x00;
-                let pointer = self.x.wrapping_add(combine_bytes(args[1], args[0]));
-                let addr_bytes = memory_controller.read(0, pointer, 2);
-                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
-            }
-            AddressMode::AbsoluteLong => {
-                bank = args[0];
-                address = combine_bytes(args[2], args[1]);
-            }
-            AddressMode::AbsoluteLongX => {
-                bank = args[2];
-                address = self.x.wrapping_add(combine_bytes(args[1], args[0]));
-            }
-            AddressMode::AbsoluteX => {
-                bank = self.data_bank;
-                address = self.x.wrapping_add(combine_bytes(args[1], args[0]));
-            }
-            AddressMode::AbsoluteY => {
-                bank = self.data_bank;
-                address = self.y.wrapping_add(combine_bytes(args[1], args[0]));
-            }
-            AddressMode::Accumulator => {
-                bank = self.data_bank; // TODO verify
-                address = self.accumulator;
-            }
-            AddressMode::DirectPage => {
-                bank = 0x00;
-                address = self.direct_page.wrapping_add(args[0] as u16);
-            }
-            AddressMode::DirectPageIndirect => {
-                bank = self.data_bank;
-                let pointer = self.direct_page.wrapping_add(args[0] as u16);
-                let addr_bytes = memory_controller.read(0, pointer, 2);
-                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
-            }
-            AddressMode::DirectPageIndirectLong => {
-                let pointer = self.direct_page.wrapping_add(args[0] as u16);
-                let addr_bytes = memory_controller.read(0, pointer, 3);
-                bank = addr_bytes[2];
-                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
-            }
-            AddressMode::DirectPageIndirectLongY => {
-                let pointer = self.direct_page.wrapping_add(args[0] as u16);
-                let addr_bytes = memory_controller.read(0, pointer, 3);
-                bank = addr_bytes[2];
-                address = self
-                    .y
-                    .wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
-            }
-            AddressMode::DirectPageIndirectX => {
-                bank = self.data_bank;
-                let pointer = self
-                    .direct_page
-                    .wrapping_add(self.x.wrapping_add(args[0] as u16));
-                let addr_bytes = memory_controller.read(0, pointer, 2);
-                address = combine_bytes(addr_bytes[1], addr_bytes[0]);
-            }
-            AddressMode::DirectPageIndirectY => {
-                bank = self.data_bank;
-                let pointer = self.direct_page.wrapping_add(args[0] as u16);
-                let addr_bytes = memory_controller.read(0, pointer, 2);
-                address = self
-                    .y
-                    .wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
-            }
-            AddressMode::DirectPageX => {
-                bank = 0x00;
-                address = self
-                    .direct_page
-                    .wrapping_add(self.x.wrapping_add(args[0] as u16));
-            }
-            AddressMode::DirectPageY => {
-                bank = 0x00;
-                address = self
-                    .direct_page
-                    .wrapping_add(self.y.wrapping_add(args[0] as u16));
-            }
-            AddressMode::Immediate => return None,
-            AddressMode::StackRelative => {
-                bank = 0x00;
-                address = self.stack_pointer.wrapping_add(args[0] as u16);
-            }
-            AddressMode::StackRelativeIndirectY => {
-                bank = self.data_bank;
-                let pointer = self.stack_pointer.wrapping_add(args[0] as u16);
-                let addr_bytes = memory_controller.read(bank, pointer, 2);
-                address = self
-                    .y
-                    .wrapping_add(combine_bytes(addr_bytes[1], addr_bytes[0]));
-            }
-        }
-
-        Some((bank, address))
+        let arg_address = self
+            .program_counter
+            .wrapping_add(1)
+            .wrapping_add(self.processing_data.args.len() as u16);
+        let arg = self.read_byte(memory_controller, self.program_bank, arg_address);
+        self.processing_data.args.push(arg);
     }
 
     /// Processor flags
@@ -421,17 +399,13 @@ impl CPU {
         }
         self.processor_status = (self.processor_status & maintain_mask) | set_mask
     }
-    fn advance_program_counter_with_address_mode(&mut self, address_mode: &AddressMode) {
-        let is8bit = self.processor_status & ACCUMULATOR_MASK != 0;
-        self.advance_program_counter_address_mode_and_8bit(address_mode, is8bit);
-    }
-    fn advance_program_counter_address_mode_and_8bit(
+    fn advance_program_counter_with_address_mode(
         &mut self,
         address_mode: &AddressMode,
         is8bit: bool,
     ) {
         let mut op_size = instrusctions::get_op_size(address_mode);
-        if matches!(address_mode, AddressMode::Immediate) && is8bit {
+        if is8bit && matches!(address_mode, AddressMode::Immediate) {
             op_size -= 1;
         }
         self.advance_program_counter(op_size);
@@ -440,22 +414,32 @@ impl CPU {
         self.processing_state = LoadingOp;
         self.program_counter = self.program_counter.wrapping_add(op_size);
     }
-    fn stack_push_8(&mut self, memory_controller: &mut MemoryController, value: u8) {
-        memory_controller.write(0x00, self.stack_pointer, value);
+    fn stack_push_byte(&mut self, memory_controller: &mut MemoryController, value: u8) {
+        self.write_byte(memory_controller, 0x00, self.stack_pointer, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1)
     }
-    fn stack_push_16(&mut self, memory_controller: &mut MemoryController, value: u16) {
-        let bytes = split_bytes(value);
-        self.stack_push_8(memory_controller, bytes.1);
-        self.stack_push_8(memory_controller, bytes.0);
-    }
-    fn stack_pop_8(&mut self, memory_controller: &MemoryController) -> u8 {
+    fn stack_pop_byte(&mut self, memory_controller: &MemoryController) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
         memory_controller.read_byte(0x00, self.stack_pointer)
     }
-    fn stack_pop_16(&mut self, memory_controller: &MemoryController) -> u16 {
-        let low_byte = self.stack_pop_8(memory_controller);
-        let high_byte = self.stack_pop_8(memory_controller);
+    /// Pushes bytes to the stack one byte per cycle
+    /// 
+    /// panics if self.processing_data.write_count is >= stack_values.len()
+    fn cycle_push_stack(
+        &mut self,
+        memory_controller: &mut MemoryController,
+        stack_values: &Vec<u8>,
+    ) -> bool {
+        self.stack_push_byte(
+            memory_controller,
+            (*stack_values)[self.processing_data.write_count as usize],
+        );
+        self.processing_data.write_count += 1;
+        self.processing_data.write_count == stack_values.len() as u8
+    }
+    fn stack_pop_word(&mut self, memory_controller: &MemoryController) -> u16 {
+        let low_byte = self.stack_pop_byte(memory_controller);
+        let high_byte = self.stack_pop_byte(memory_controller);
         combine_bytes(high_byte, low_byte)
     }
 }

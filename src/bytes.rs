@@ -7,3 +7,8 @@ pub fn combine_bytes(high: u8, low: u8) -> u16 {
 pub fn split_bytes(val: u16) -> (u8, u8) {
     (val as u8, (val >> 8) as u8)
 }
+
+/// checks if all the set bits in the mask are set in the value
+pub fn check_bits(value: u8, mask: u8) -> bool {
+    value & mask == mask
+}
