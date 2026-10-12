@@ -1,16 +1,14 @@
 use crate::{
-    bytes::{check_bits, combine_bytes, split_bytes},
-    snes::{
+    bytes::{check_bits, combine_bytes, split_bytes}, snes::{
         cpu::{
-            ProcessingState::{LoadingOp, Processing},
-            instrusctions::{AddressMode, get_op_size},
-        },
-        memory::MemoryController,
+            ProcessingState::{LoadingOp, Processing}, ops::{AddressMode, get_op_size}, op_impls::{brk, sei, stz},
+        }, memory::MemoryController,
     },
 };
 
-mod instrusctions;
-use instrusctions::{Operation, lookup_opcode};
+mod ops;
+use ops::{Operation, lookup_opcode};
+mod op_impls;
 
 const CARRY_MASK: u8 = 0b0000_0001;
 const ZERO_MASK: u8 = 0b0000_0010;
@@ -141,93 +139,10 @@ impl CPU {
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
         // TODO add per cycle logging option
         match self.processing_data.op {
-            Operation::BRK => {
-                // TODO verify cycle count
-                let mut stack_values = vec![];
-                let mut brk_vector_lookup = 0xFFE6_u16;
-                if !self.emulation_flag {
-                    stack_values.push(self.program_bank);
-                    brk_vector_lookup = 0xFFFE;
-                }
-                let return_address_bytes = split_bytes(self.program_counter.wrapping_add(2));
-                stack_values.push(return_address_bytes.1);
-                stack_values.push(return_address_bytes.0);
-                stack_values.push(self.processor_status);
-                if stack_values.len() as u8 > self.processing_data.write_count {
-                    self.cycle_push_stack(memory_controller, &stack_values);
-                } else {
-                    match self.processing_data.read_count {
-                        0 => {
-                            let byte = self.read_byte(memory_controller, 0, brk_vector_lookup);
-                            self.processing_data.args.push(byte);
-                            self.processing_data.read_count += 1;
-                        }
-                        1 => {
-                            let byte = self.read_byte(memory_controller, 0, brk_vector_lookup + 1);
-                            self.processing_data.args.push(byte);
-                            self.processing_data.read_count += 1;
-                        }
-                        _ => {
-                            self.program_bank = 0x00;
-                            self.program_counter = combine_bytes(
-                                self.processing_data.args[1],
-                                self.processing_data.args[0],
-                            );
-                            let flag = if self.emulation_flag {
-                                Some(true)
-                            } else {
-                                None
-                            };
-                            self.update_processor_status(
-                                None,
-                                None,
-                                Some(true),
-                                Some(false),
-                                flag,
-                                None,
-                                None,
-                                None,
-                            );
-                            self.processing_state = LoadingOp;
-                        }
-                    }
-                }
-            }
-            Operation::LDA(address_mode) => {
-                let is8bit = check_bits(self.processor_status, ACCUMULATOR_MASK);
-                if let None = self.processing_data.operand {
-                    self.cycle_operand_loading(&address_mode, memory_controller, is8bit)
-                }
-                if let Some(operand) = self.processing_data.operand {
-                    self.accumulator = operand;
-                    self.advance_program_counter_with_address_mode(&address_mode, is8bit);
-                }
-            }
-            Operation::SEI => {
-                self.update_processor_status(None, None, Some(true), None, None, None, None, None);
-
-                self.advance_program_counter(1);
-            }
-            Operation::STZ(address_mode) => {
-                let is8bit = check_bits(self.processor_status, ACCUMULATOR_MASK);
-                match self.processing_data.operand {
-                    None => self.cycle_operand_loading(&address_mode, memory_controller, is8bit),
-                    Some(address) => {
-                        if is8bit {
-                            self.write_byte(memory_controller, 0x00, address, 0x00);
-                        } else {
-                            let is_complete =
-                                self.cycle_write_word(memory_controller, 0, address, 0);
-                            if is_complete {
-                                self.advance_program_counter_with_address_mode(
-                                    &address_mode,
-                                    is8bit,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            Operation::BRK => brk(self, memory_controller),
+            Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
+            Operation::SEI => sei(self),
+            Operation::STZ(address_mode) => stz(self, memory_controller, &address_mode),
             _ => todo!("[Operation::{:?}]", self.processing_data.op),
         }
     }
@@ -422,7 +337,7 @@ impl CPU {
         address_mode: &AddressMode,
         is8bit: bool,
     ) {
-        let mut op_size = instrusctions::get_op_size(address_mode);
+        let mut op_size = ops::get_op_size(address_mode);
         if is8bit && matches!(address_mode, AddressMode::Immediate) {
             op_size -= 1;
         }
