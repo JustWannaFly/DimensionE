@@ -10,7 +10,7 @@ use crate::snes::memory::{MemoryController};
         pub fn new() -> SnesEmulator {
             SnesEmulator { 
                 memory_controller: MemoryController::new(),
-                cpu: CPU::new()
+                cpu: CPU::new(),
             }
         }
         pub fn load_cartridge(&mut self, cartridge: &Cartridge) {
@@ -18,7 +18,7 @@ use crate::snes::memory::{MemoryController};
             self.cpu.initialize(self.memory_controller.reset_vector);
         }
         pub fn tick(&mut self) {
-            self.cpu.execute_instruction(&mut self.memory_controller);
+            self.cpu.tick(&mut self.memory_controller);
         }
     }
 }
