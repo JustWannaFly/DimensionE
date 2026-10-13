@@ -146,7 +146,6 @@ impl CPU {
             _ => todo!("[Operation::{:?}]", self.processing_data.op),
         }
     }
-    /// uses the memory_controller's cpu bus to write a byte
     fn write_byte(
         &mut self,
         memory_controller: &mut MemoryController,
