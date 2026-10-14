@@ -121,17 +121,9 @@ impl MemoryController {
         return self.cycles_to_access(bank, address);
     }
     pub fn cpu_bus_read(&self) -> u8 {
-        self.read_bus(&self.cpu_bus)
+        self.read_byte(self.cpu_bus.bank, self.cpu_bus.address)
     }
     pub fn cpu_bus_write(&mut self, value: u8) {
         self.write(self.cpu_bus.bank, self.cpu_bus.address, value);
-    }
-    fn read_bus(&self, bus: &Bus) -> u8 {
-        let bank = self.memory_data.get(bus.bank as usize).unwrap();
-        *(&bank[bus.address as usize])
-    }
-    pub fn write_bus(&mut self, bus: &Bus, byte: u8) {
-        self.memory_data[bus.bank as usize][bus.address as usize] = byte;
-        self.write_mirrors(bus.bank, bus.address, byte);
     }
 }
