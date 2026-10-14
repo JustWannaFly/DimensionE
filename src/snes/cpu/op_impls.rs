@@ -66,6 +66,10 @@ pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.update_processor_status(None, None, Some(true), Some(false), flag, None, None, None);
     }
 }
+pub fn clc(cpu: &mut CPU) {
+    cpu.update_processor_status(Some(false), None, None, None, None, None, None, None);
+    cpu.advance_program_counter(1);
+}
 pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let helper_completed = Helpers::stack_jump_helper(cpu, memory_controller, 0xFFE4, 0xFFF4);
     if helper_completed {
