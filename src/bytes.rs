@@ -12,3 +12,7 @@ pub fn split_bytes(val: u16) -> (u8, u8) {
 pub fn check_bits(value: u8, mask: u8) -> bool {
     value & mask == mask
 }
+
+pub fn build_string(bytes: &Vec<u8>) -> String {
+    bytes.iter().map(|f| {*f as char}).collect()
+}

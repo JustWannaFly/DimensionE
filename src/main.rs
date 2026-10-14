@@ -12,13 +12,11 @@ fn main() {
     let mut emulator = SnesEmulator::new();
     emulator.load_cartridge(&cart);
     let title_bytes = emulator.memory_controller.read(0, 0xFFC0, 21);
-    println!("Rom Load check:: Title: [{}]", build_string(&title_bytes));
+    println!("Rom Load check:: Title: [{}]", bytes::build_string(&title_bytes));
     loop { // TODO limit loop speed to master clock speed
         emulator.tick();
     }
 
 }
 
-fn build_string(bytes: &Vec<u8>) -> String {
-    bytes.iter().map(|f| {*f as char}).collect()
-}
+
