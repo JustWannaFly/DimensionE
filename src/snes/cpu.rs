@@ -1,7 +1,7 @@
 use crate::{
-    bytes::{check_bits, combine_bytes, split_bytes}, snes::{
+    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
         cpu::{
-            ProcessingState::{LoadingOp, Processing}, op_impls::{brk, cop, sei, stz}, ops::{AddressMode, get_op_size},
+            ProcessingState::{LoadingOp, Processing}, op_impls::xce, ops::{AddressMode, get_op_size},
         }, memory::MemoryController,
     },
 };
@@ -139,13 +139,18 @@ impl CPU {
     }
 
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
-        // TODO add per cycle logging option
+        // TODO add per cycle logging with disable option
         match self.processing_data.op {
-            Operation::BRK => brk(self, memory_controller),
-            Operation::COP => cop(self, memory_controller),
+            Operation::BRK => op_impls::brk(self, memory_controller),
+            Operation::CLC => op_impls::clc(self),
+            Operation::CLD => op_impls::cld(self),
+            Operation::CLI => op_impls::cli(self),
+            Operation::CLV => op_impls::clv(self),
+            Operation::COP => op_impls::cop(self, memory_controller),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
-            Operation::SEI => sei(self),
-            Operation::STZ(address_mode) => stz(self, memory_controller, &address_mode),
+            Operation::SEI => op_impls::sei(self),
+            Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
+            Operation::XCE => xce(self),
             _ => todo!("[Operation::{:?}]", self.processing_data.op),
         }
     }

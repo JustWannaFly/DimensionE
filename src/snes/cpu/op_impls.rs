@@ -1,8 +1,6 @@
 use crate::{
-    bytes::{check_bits, combine_bytes, split_bytes},
-    snes::{
-        cpu::{ACCUMULATOR_MASK, CPU, ProcessingState::LoadingOp, ops::AddressMode},
-        memory::MemoryController,
+    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
+        cpu::{ACCUMULATOR_MASK, CARRY_MASK, CPU, ProcessingState::LoadingOp, ops::AddressMode}, memory::MemoryController,
     },
 };
 
@@ -70,6 +68,18 @@ pub fn clc(cpu: &mut CPU) {
     cpu.update_processor_status(Some(false), None, None, None, None, None, None, None);
     cpu.advance_program_counter(1);
 }
+pub fn cld(cpu: &mut CPU) {
+    cpu.update_processor_status(None, None, None, Some(false), None, None, None, None);
+    cpu.advance_program_counter(1);
+}
+pub fn cli(cpu: &mut CPU) {
+    cpu.update_processor_status(None, None, Some(false), None, None, None, None, None);
+    cpu.advance_program_counter(1);
+}
+pub fn clv(cpu: &mut CPU) {
+    cpu.update_processor_status(None, None, None, None, None, None, Some(false), None);
+    cpu.advance_program_counter(1);
+}
 pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let helper_completed = Helpers::stack_jump_helper(cpu, memory_controller, 0xFFE4, 0xFFF4);
     if helper_completed {
@@ -77,7 +87,7 @@ pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
-    let is8bit = check_bits(cpu.processor_status, ACCUMULATOR_MASK);
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
         cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
     }
@@ -91,7 +101,7 @@ pub fn sei(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
-    let is8bit = check_bits(cpu.processor_status, ACCUMULATOR_MASK);
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     match cpu.processing_data.operand {
         None => cpu.cycle_operand_loading(address_mode, memory_controller, is8bit),
         Some(address) => {
@@ -107,10 +117,23 @@ pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         }
     }
 }
+pub fn xce(cpu: &mut CPU) {
+    let enter_emulation = check_bits_set(cpu.processor_status, CARRY_MASK);
+    let carry = Some(cpu.emulation_flag);
+    let set8bit = if enter_emulation {
+        Some(true)
+    } else { None };
+    if enter_emulation {
+        cpu.stack_pointer = combine_bytes(0x01, split_bytes(cpu.stack_pointer).0)
+    }
+    cpu.emulation_flag = enter_emulation;
+    cpu.update_processor_status(carry, None, None, None, set8bit, set8bit, None, None);
+    cpu.advance_program_counter(1);
+}
 
 #[cfg(test)]
 mod tests {
-    use crate::snes::cpu::IRQ_MASK;
+    use crate::{bytes::check_bits_unset, snes::cpu::{CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ops::Operation}};
 
     use super::*;
     use std::assert_matches;
@@ -142,6 +165,7 @@ mod tests {
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
 
+        assert_matches!(cpu.processing_data.op, Operation::BRK);
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.processing_data.op_cycles, 8);
         assert_eq!(cpu.stack_pop_byte(&mut memory_controller), 0);
@@ -156,7 +180,75 @@ mod tests {
         assert_eq!(cpu.stack_pop_byte(&mut memory_controller), bank);
         assert_eq!(cpu.program_bank, 0x00);
         assert_eq!(cpu.program_counter, 0x0000);
-        assert!(check_bits(cpu.processor_status, IRQ_MASK));
+        assert!(check_bits_set(cpu.processor_status, IRQ_MASK));
+    }
+    #[test]
+    fn clc() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0x18); // CLC
+        cpu.processor_status = CARRY_MASK;
+        assert!(check_bits_set(cpu.processor_status, CARRY_MASK));
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::CLC);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(2, cpu.processing_data.op_cycles);
+        assert!(check_bits_unset(cpu.processor_status, CARRY_MASK));
+    }
+    #[test]
+    fn cld() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0xD8); // CLD
+        cpu.processor_status = DECIMAL_MASK;
+        assert!(check_bits_set(cpu.processor_status, DECIMAL_MASK));
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::CLD);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(2, cpu.processing_data.op_cycles);
+        assert!(check_bits_unset(cpu.processor_status, DECIMAL_MASK));
+    }
+    #[test]
+    fn cli() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0x58); // CLI
+        cpu.processor_status = IRQ_MASK;
+        assert!(check_bits_set(cpu.processor_status, IRQ_MASK));
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::CLI);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(2, cpu.processing_data.op_cycles);
+        assert!(check_bits_unset(cpu.processor_status, IRQ_MASK));
+    }
+    #[test]
+    fn clv() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0xB8); // CLV
+        cpu.processor_status = OVERFLOW_MASK;
+        assert!(check_bits_set(cpu.processor_status, OVERFLOW_MASK));
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::CLV);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(2, cpu.processing_data.op_cycles);
+        assert!(check_bits_unset(cpu.processor_status, OVERFLOW_MASK));
     }
     #[test]
     fn cop() {
@@ -169,7 +261,7 @@ mod tests {
         cpu.program_bank = bank;
         cpu.emulation_flag = false;
         cpu.stack_pointer = 0x0005;
-        memory_controller.write(bank, address, 0x00); // BRK
+        memory_controller.write(bank, address, 0x02); // COP
 
         // non-emulation speed 8 cycles;
         cpu.process_cycle(&mut memory_controller);
@@ -181,6 +273,7 @@ mod tests {
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
 
+        assert_matches!(cpu.processing_data.op, Operation::COP);
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.processing_data.op_cycles, 8);
         assert_eq!(cpu.stack_pop_byte(&mut memory_controller), 0);
@@ -208,7 +301,7 @@ mod tests {
         cpu.initialize(0);
         set_accumulator8bit(&mut cpu);
 
-        memory_controller.write(0, 0x0000, 0xA9); // LCA(Immediate)
+        memory_controller.write(0, 0x0000, 0xA9); // LDA(Immediate)
         memory_controller.write(0, 0x0001, op_value);
 
         // base speed 2 cycles
@@ -216,6 +309,7 @@ mod tests {
         cpu.process_cycle(&mut memory_controller);
 
         // accumulator is set to operand value
+        assert_matches!(cpu.processing_data.op, Operation::LDA(AddressMode::Immediate));
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.accumulator, op_value as u16);
         assert_eq!(2, cpu.processing_data.op_cycles);
@@ -251,8 +345,43 @@ mod tests {
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
 
+        assert_matches!(cpu.processing_data.op, Operation::STZ(AddressMode::Absolute));
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(0, memory_controller.read_byte(0, 0));
         assert_eq!(4, cpu.processing_data.op_cycles);
+    }
+    #[test]
+    fn xce() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0xFB);
+        memory_controller.write(0x00, 0x0001, 0xFB);
+        cpu.processor_status = 0b0000_0000;
+
+        // exchange 1 time to set not emulation mode
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::XCE);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 2);
+        assert!(!cpu.emulation_flag);
+        assert!(check_bits_set(cpu.processor_status, CARRY_MASK));
+        assert!(check_bits_unset(cpu.processor_status, ACCUMULATOR_MASK));
+        assert!(check_bits_unset(cpu.processor_status, INDEX_REG_MASK));
+
+        // exchange again to enter emulation mode
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::XCE);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 2);
+        assert!(cpu.emulation_flag);
+        assert!(check_bits_unset(cpu.processor_status, CARRY_MASK));
+        assert!(check_bits_set(cpu.processor_status, ACCUMULATOR_MASK));
+        assert!(check_bits_set(cpu.processor_status, INDEX_REG_MASK));
     }
 }
