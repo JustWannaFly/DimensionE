@@ -1,7 +1,7 @@
 use crate::{
     bytes::{check_bits, combine_bytes, split_bytes}, snes::{
         cpu::{
-            ProcessingState::{LoadingOp, Processing}, ops::{AddressMode, get_op_size}, op_impls::{brk, sei, stz},
+            ProcessingState::{LoadingOp, Processing}, op_impls::{brk, cop, sei, stz}, ops::{AddressMode, get_op_size},
         }, memory::MemoryController,
     },
 };
@@ -85,6 +85,7 @@ impl CPU {
         self.ticks_per_cycle = DEFAULT_TICKS_PER_CYCLE;
         self.ticks_since_cycle = DEFAULT_TICKS_PER_CYCLE;
 
+        self.processor_status = 0x00;
         self.data_bank = 0x0000;
         self.direct_page = 0x0000_0000;
         self.program_bank = 0x0000_0000;
@@ -105,7 +106,6 @@ impl CPU {
         self.ticks_since_cycle += 1;
         if self.ticks_since_cycle >= self.ticks_per_cycle {
             println!("");
-            self.processing_data.op_cycles += 1;
             self.ticks_since_cycle = 0;
             self.process_cycle(memory_controller);
         }
@@ -135,12 +135,14 @@ impl CPU {
                 self.cycle_execute_op(memory_controller);
             }
         }
+        self.processing_data.op_cycles += 1;
     }
 
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
         // TODO add per cycle logging option
         match self.processing_data.op {
             Operation::BRK => brk(self, memory_controller),
+            Operation::COP => cop(self, memory_controller),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
             Operation::SEI => sei(self),
             Operation::STZ(address_mode) => stz(self, memory_controller, &address_mode),
@@ -351,9 +353,10 @@ impl CPU {
         self.write_byte(memory_controller, 0x00, self.stack_pointer, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1)
     }
-    fn stack_pop_byte(&mut self, memory_controller: &MemoryController) -> u8 {
+    fn stack_pop_byte(&mut self, memory_controller: &mut MemoryController) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        memory_controller.read_byte(0x00, self.stack_pointer)
+        let foo = self.read_byte(memory_controller, 0x00, self.stack_pointer);
+        foo
     }
     /// Pushes bytes to the stack one byte per cycle
     ///
@@ -369,10 +372,5 @@ impl CPU {
         );
         self.processing_data.write_count += 1;
         self.processing_data.write_count == stack_values.len() as u8
-    }
-    fn stack_pop_word(&mut self, memory_controller: &MemoryController) -> u16 {
-        let low_byte = self.stack_pop_byte(memory_controller);
-        let high_byte = self.stack_pop_byte(memory_controller);
-        combine_bytes(high_byte, low_byte)
     }
 }
