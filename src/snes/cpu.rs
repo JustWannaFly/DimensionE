@@ -19,7 +19,7 @@ const ACCUMULATOR_MASK: u8 = 0b0010_0000;
 const OVERFLOW_MASK: u8 = 0b0100_0000;
 const NEGATIVE_MASK: u8 = 0b1000_0000;
 
-const DEFAULT_TICKS_PER_CYCLE: u8 = 6;
+const BASE_CPU_SPEED: u8 = 6;
 
 #[derive(Debug)]
 enum ProcessingState {
@@ -47,7 +47,7 @@ pub struct CPU {
     program_bank: u8,
     program_counter: u16,
     emulation_flag: bool,
-    ticks_per_cycle: u8,
+    memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
 
     processing_state: ProcessingState,
@@ -66,8 +66,8 @@ impl CPU {
             program_bank: 0x0000,
             program_counter: 0x0000_0000,
             emulation_flag: true,
-            ticks_per_cycle: DEFAULT_TICKS_PER_CYCLE,
-            ticks_since_cycle: DEFAULT_TICKS_PER_CYCLE,
+            memory_access_delay: None,
+            ticks_since_cycle: BASE_CPU_SPEED,
 
             processing_state: LoadingOp,
             processing_data: ProcessingDetails {
@@ -82,8 +82,8 @@ impl CPU {
     }
     pub fn initialize(&mut self, program_start: u16) {
         // TODO initialize all registers
-        self.ticks_per_cycle = DEFAULT_TICKS_PER_CYCLE;
-        self.ticks_since_cycle = DEFAULT_TICKS_PER_CYCLE;
+        self.memory_access_delay = None;
+        self.ticks_since_cycle = BASE_CPU_SPEED;
 
         self.processor_status = 0x00;
         self.data_bank = 0x0000;
@@ -102,9 +102,11 @@ impl CPU {
             read_count: 0,
         };
     }
+    // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
         self.ticks_since_cycle += 1;
-        if self.ticks_since_cycle >= self.ticks_per_cycle {
+        let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
+        if self.ticks_since_cycle >= ticks_to_delay {
             println!("");
             self.ticks_since_cycle = 0;
             self.process_cycle(memory_controller);
@@ -161,7 +163,7 @@ impl CPU {
         address: u16,
         byte: u8,
     ) {
-        self.set_bus_location(memory_controller, bank, address);
+        self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         memory_controller.cpu_bus_write(byte);
     }
     /// Writes a 16 bit word to memory stored in little endian format at bank:address and bank:address+1
@@ -194,16 +196,8 @@ impl CPU {
         bank: u8,
         address: u16,
     ) -> u8 {
-        self.set_bus_location(memory_controller, bank, address);
+        self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         memory_controller.cpu_bus_read()
-    }
-    fn set_bus_location(
-        &mut self,
-        memory_controller: &mut MemoryController,
-        bank: u8,
-        address: u16,
-    ) {
-        self.ticks_per_cycle = memory_controller.cpu_bus_set_location(bank, address);
     }
     fn cycle_operand_loading(
         &mut self,

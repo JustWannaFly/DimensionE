@@ -6,7 +6,7 @@ mod snes;
 mod bytes;
 fn main() {
     let cart = snes::memory::cartridge::Cartridge::new(
-        fs::read("roms/Chrono Trigger.sfc")
+        fs::read("roms/Zelda A Link to the Past.sfc")
             .expect("should be able to read a rom"),
     );
     let mut emulator = SnesEmulator::new();
