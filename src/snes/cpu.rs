@@ -107,6 +107,12 @@ impl CPU {
         self.ticks_since_cycle += 1;
         let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
         if self.ticks_since_cycle >= ticks_to_delay {
+            match self.memory_access_delay {
+                Some(_) => {
+                    self.memory_access_delay = None;
+                }
+                None => ()
+            }
             println!("");
             self.ticks_since_cycle = 0;
             self.process_cycle(memory_controller);
