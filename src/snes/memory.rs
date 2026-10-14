@@ -17,7 +17,6 @@ struct Bus {
     address: u16,
 }
 pub struct MemoryController {
-    cart_loaded: bool,
     cart_speed: u8,
     memory_data: Vec<Vec<u8>>,
     pub reset_vector: u16,
@@ -28,7 +27,6 @@ pub struct MemoryController {
 impl MemoryController {
     pub fn new() -> MemoryController {
         MemoryController {
-            cart_loaded: false,
             cart_speed: 0,
             memory_data: vec![vec![0; 0xFFFF + 1]; 0xFF + 1],
             reset_vector: 0x0000,
@@ -57,15 +55,8 @@ impl MemoryController {
             }
         }
 
-        self.cart_loaded = true;
-    }
-    pub fn _unload_cart(&mut self) {
-        self.cart_loaded = false;
     }
     pub fn cycles_to_access(&self, bank: u8, address: u16) -> u8 {
-        if !self.cart_loaded {
-            return 0;
-        }
         match bank {
             0x00..0x40 => match address {
                 0x0000..0x2000 => SLOW_MEMORY_CYCLES,
@@ -91,10 +82,6 @@ impl MemoryController {
         }
     }
     pub fn read(&self, bank: u8, address: u16, length: u16) -> Vec<u8> {
-        // TODO implement timing logic
-        if !self.cart_loaded {
-            return vec![0];
-        }
         let bank = self.memory_data.get(bank as usize).unwrap();
         let mut result = vec![];
         let mut read_addr = address;
@@ -105,9 +92,6 @@ impl MemoryController {
         result
     }
     pub fn read_byte(&self, bank: u8, address: u16) -> u8 {
-        if !self.cart_loaded {
-            return 0;
-        }
         let bank = self.memory_data.get(bank as usize).unwrap();
         *(&bank[address as usize])
     }
@@ -143,9 +127,6 @@ impl MemoryController {
         self.write(self.cpu_bus.bank, self.cpu_bus.address, value);
     }
     fn read_bus(&self, bus: &Bus) -> u8 {
-        if !self.cart_loaded {
-            return 0;
-        }
         let bank = self.memory_data.get(bus.bank as usize).unwrap();
         *(&bank[bus.address as usize])
     }

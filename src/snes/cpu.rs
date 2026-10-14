@@ -21,6 +21,7 @@ const NEGATIVE_MASK: u8 = 0b1000_0000;
 
 const DEFAULT_TICKS_PER_CYCLE: u8 = 6;
 
+#[derive(Debug)]
 enum ProcessingState {
     LoadingOp,
     Processing,

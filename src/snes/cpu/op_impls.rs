@@ -87,14 +87,35 @@ pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
+    use crate::snes::cpu::ProcessingState::Processing;
+
     use super::*;
 
-    fn get_test_cpu() -> CPU {
-        
-    }
-
     #[test]
-    fn lda() {
-        
+    fn lda_test() {
+        let op_value: u8 = 0x12;
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+
+        assert_eq!(cpu.accumulator, 0x0000);
+        assert_matches!(cpu.processing_state, LoadingOp);
+
+        cpu.initialize(0);
+        cpu.update_processor_status(None, None, None, None, None, Some(true), None, None);
+
+        memory_controller.write(0, 0x0000, 0xA9); // LCA(Immediate)
+        memory_controller.write(0, 0x0001, op_value);
+
+        // base speed 2 cycles
+        cpu.process_cycle(&mut memory_controller);
+        assert_matches!(cpu.processing_state, Processing);
+        cpu.process_cycle(&mut memory_controller);
+
+        // accumulator is set to operand value
+        assert_eq!(cpu.accumulator, op_value as u16);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
     }
 }
