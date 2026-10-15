@@ -358,7 +358,7 @@ impl CPU {
         self.write_byte(memory_controller, 0x00, self.stack_pointer, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1)
     }
-    fn _stack_pop_byte(&mut self, memory_controller: &mut MemoryController) -> u8 {
+    fn stack_pop_byte(&mut self, memory_controller: &mut MemoryController) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
         self.read_byte(memory_controller, 0x00, self.stack_pointer)
     }
