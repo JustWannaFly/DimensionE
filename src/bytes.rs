@@ -47,7 +47,6 @@ mod byte_tests {
     use crate::bytes::{
         check_bits_set, check_bits_unset, combine_bytes, encode_bdc, get_bdc_value, split_bytes,
     };
-
     #[test]
     fn combine_bytes_test() {
         assert_eq!(0x1234_u16, combine_bytes(0x12, 0x34));

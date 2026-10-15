@@ -149,6 +149,7 @@ impl CPU {
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
+            Operation::ADC(address_mode) => op_impls::adc(self, memory_controller, &address_mode),
             Operation::BRK => op_impls::brk(self, memory_controller),
             Operation::CLC => op_impls::clc(self),
             Operation::CLD => op_impls::cld(self),

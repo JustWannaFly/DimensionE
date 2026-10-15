@@ -1,10 +1,15 @@
+
 use crate::{
-    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
-        cpu::{ACCUMULATOR_MASK, CARRY_MASK, CPU, ProcessingState::LoadingOp, ops::AddressMode}, memory::MemoryController,
+    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes},
+    snes::{
+        cpu::{
+            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, ops::AddressMode,
+        },
+        memory::MemoryController,
     },
 };
 
-mod Helpers {
+mod helpers {
     use crate::{
         bytes::{combine_bytes, split_bytes},
         snes::{
@@ -56,9 +61,55 @@ mod Helpers {
         }
     }
 }
+pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let bit15mask = 0x8000_u16;
+        let is_carry_in = check_bits_set(cpu.processor_status, CARRY_MASK);
+        let is_bcd = check_bits_set(cpu.processor_status, DECIMAL_MASK);
+        let mut sum = if is_carry_in { 1_u32 } else { 0_u32 };
+        let mut is_bcd_overflow = false;
+        if is_bcd {
+            sum = sum + get_bdc_value(cpu.accumulator) as u32 + get_bdc_value(operand) as u32;
+            is_bcd_overflow = sum > 9999;
+            sum = encode_bdc(sum as u16) as u32;
+        } else {
+            sum = sum + cpu.accumulator as u32 + operand as u32;
+        }
+        let mut is_overflow = if is8bit { sum > 0x00FF } else { sum > 0xFFFF };
+        let mut is_negative = if is8bit {
+            sum & 0x0080 != 0
+        } else {
+            sum & bit15mask as u32 != 0
+        };
+        if is_bcd {
+            is_negative = false;
+            is_overflow = is_bcd_overflow;
+        }
+        let is_zero = sum == 0;
 
+        if is8bit {
+            sum = sum & 0x0000_FFFF;
+        }
+        cpu.accumulator = sum as u16;
+        cpu.update_processor_status(
+            None,
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            Some(is_overflow),
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
 pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    let helper_completed = Helpers::stack_jump_helper(cpu, memory_controller, 0xFFE6, 0xFFFE);
+    let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE6, 0xFFFE);
     if helper_completed {
         let flag = if cpu.emulation_flag { Some(true) } else { None };
         cpu.update_processor_status(None, None, Some(true), Some(false), flag, None, None, None);
@@ -81,7 +132,7 @@ pub fn clv(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    let helper_completed = Helpers::stack_jump_helper(cpu, memory_controller, 0xFFE4, 0xFFF4);
+    let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE4, 0xFFF4);
     if helper_completed {
         cpu.update_processor_status(None, None, Some(true), Some(false), None, None, None, None);
     }
@@ -120,9 +171,7 @@ pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
 pub fn xce(cpu: &mut CPU) {
     let enter_emulation = check_bits_set(cpu.processor_status, CARRY_MASK);
     let carry = Some(cpu.emulation_flag);
-    let set8bit = if enter_emulation {
-        Some(true)
-    } else { None };
+    let set8bit = if enter_emulation { Some(true) } else { None };
     if enter_emulation {
         cpu.stack_pointer = combine_bytes(0x01, split_bytes(cpu.stack_pointer).0)
     }
@@ -133,7 +182,11 @@ pub fn xce(cpu: &mut CPU) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytes::check_bits_unset, snes::cpu::{CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ops::Operation}};
+    use crate::{
+        bytes::check_bits_unset, snes::cpu::{
+            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ProcessingState::LoadingOp, ops::{AddressMode::Immediate, Operation},
+        },
+    };
 
     use super::*;
     use std::assert_matches;
@@ -142,6 +195,30 @@ mod tests {
         cpu.update_processor_status(None, None, None, None, None, Some(true), None, None);
     }
 
+    #[test]
+    fn adc() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = CARRY_MASK;
+        cpu.accumulator = 0x1234;
+        memory_controller.write(0x00, 0x0000, 0x69); // ADC(Immediate)
+        memory_controller.write(0x00, 0x0001, 0xFF);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+        let expected_sum = 0x1234_u16.wrapping_add(0xFFFF).wrapping_add(1);
+
+        // Immediate Mode 16 bit = 3 cycles
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::ADC(Immediate));
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(expected_sum, cpu.accumulator);
+        assert!(check_bits_set(cpu.processor_status, OVERFLOW_MASK));
+    }
     #[test]
     fn brk() {
         let bank = 0x12_u8;
@@ -309,7 +386,10 @@ mod tests {
         cpu.process_cycle(&mut memory_controller);
 
         // accumulator is set to operand value
-        assert_matches!(cpu.processing_data.op, Operation::LDA(AddressMode::Immediate));
+        assert_matches!(
+            cpu.processing_data.op,
+            Operation::LDA(AddressMode::Immediate)
+        );
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.accumulator, op_value as u16);
         assert_eq!(2, cpu.processing_data.op_cycles);
@@ -345,7 +425,10 @@ mod tests {
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
 
-        assert_matches!(cpu.processing_data.op, Operation::STZ(AddressMode::Absolute));
+        assert_matches!(
+            cpu.processing_data.op,
+            Operation::STZ(AddressMode::Absolute)
+        );
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(0, memory_controller.read_byte(0, 0));
         assert_eq!(4, cpu.processing_data.op_cycles);
