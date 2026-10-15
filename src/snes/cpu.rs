@@ -129,7 +129,7 @@ impl CPU {
                     op: lookup_opcode(op_code),
                     args: vec![],
                     operand: None,
-                    op_cycles: 0,
+                    op_cycles: 1,
                     write_count: 0,
                     read_count: 0,
                 };
@@ -140,10 +140,10 @@ impl CPU {
                 self.processing_state = Processing;
             }
             Processing => {
+                self.processing_data.op_cycles += 1;
                 self.cycle_execute_op(memory_controller);
             }
         }
-        self.processing_data.op_cycles += 1;
     }
 
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
@@ -151,6 +151,7 @@ impl CPU {
         match self.processing_data.op {
             Operation::ADC(address_mode) => op_impls::adc(self, memory_controller, &address_mode),
             Operation::BRK => op_impls::brk(self, memory_controller),
+            Operation::BRL => op_impls::brl(self, memory_controller),
             Operation::CLC => op_impls::clc(self),
             Operation::CLD => op_impls::cld(self),
             Operation::CLI => op_impls::cli(self),

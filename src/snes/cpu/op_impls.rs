@@ -1,9 +1,9 @@
-
 use crate::{
     bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes},
     snes::{
         cpu::{
-            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, ops::AddressMode,
+            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, ProcessingState::LoadingOp,
+            ops::AddressMode,
         },
         memory::MemoryController,
     },
@@ -115,6 +115,21 @@ pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.update_processor_status(None, None, Some(true), Some(false), flag, None, None, None);
     }
 }
+pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if cpu.processing_data.args.len() < 2 {
+        cpu.load_one_arg(memory_controller);
+    } else {
+        let shift = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]) as i16;
+        let is_subtract = shift < 0;
+        let updated_address = if is_subtract {
+            cpu.program_counter.wrapping_add(3).wrapping_sub(shift.abs() as u16)
+        } else {
+            cpu.program_counter.wrapping_add(3).wrapping_add(shift as u16)
+        };
+        cpu.program_counter = updated_address;
+        cpu.processing_state = LoadingOp;
+    }
+}
 pub fn clc(cpu: &mut CPU) {
     cpu.update_processor_status(Some(false), None, None, None, None, None, None, None);
     cpu.advance_program_counter(1);
@@ -183,8 +198,11 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset, snes::cpu::{
-            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ProcessingState::LoadingOp, ops::{AddressMode::Immediate, Operation},
+        bytes::check_bits_unset,
+        snes::cpu::{
+            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
+            ProcessingState::LoadingOp,
+            ops::{AddressMode::Immediate, Operation},
         },
     };
 
@@ -258,6 +276,25 @@ mod tests {
         assert_eq!(cpu.program_bank, 0x00);
         assert_eq!(cpu.program_counter, 0x0000);
         assert!(check_bits_set(cpu.processor_status, IRQ_MASK));
+    }
+    #[test]
+    fn brl() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0x82); // BRL
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BRL);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 4);
+        assert_eq!(cpu.program_counter, 0xFFFF);
     }
     #[test]
     fn clc() {
