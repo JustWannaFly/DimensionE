@@ -25,10 +25,10 @@ mod helpers {
         emulation_lookup: u16,
     ) -> bool {
         let mut stack_values = vec![];
-        let mut brk_vector_lookup = native_lookup;
+        let mut brk_vector_lookup = emulation_lookup;
         if !cpu.emulation_flag {
             stack_values.push(cpu.program_bank);
-            brk_vector_lookup = emulation_lookup;
+            brk_vector_lookup = native_lookup;
         }
         let return_address_bytes = split_bytes(cpu.program_counter.wrapping_add(2));
         stack_values.push(return_address_bytes.1);
@@ -122,9 +122,13 @@ pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         let shift = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]) as i16;
         let is_subtract = shift < 0;
         let updated_address = if is_subtract {
-            cpu.program_counter.wrapping_add(3).wrapping_sub(shift.abs() as u16)
+            cpu.program_counter
+                .wrapping_add(3)
+                .wrapping_sub(shift.abs() as u16)
         } else {
-            cpu.program_counter.wrapping_add(3).wrapping_add(shift as u16)
+            cpu.program_counter
+                .wrapping_add(3)
+                .wrapping_add(shift as u16)
         };
         cpu.program_counter = updated_address;
         cpu.processing_state = LoadingOp;
@@ -160,6 +164,17 @@ pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     if let Some(operand) = cpu.processing_data.operand {
         cpu.accumulator = operand;
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
+pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if cpu.processing_data.args.len() == 0 {
+        cpu.load_one_arg(memory_controller);
+    } else {
+        cpu.processor_status = cpu.processing_data.args[0];
+        if cpu.emulation_flag {
+            cpu.update_processor_status(None, None, None, None, Some(true), Some(true), None, None);
+        }
+        cpu.advance_program_counter(2);
     }
 }
 pub fn sei(cpu: &mut CPU) {
@@ -283,7 +298,7 @@ mod tests {
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
         memory_controller.write(0x00, 0x0000, 0x82); // BRL
-        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0001, 0xFC);
         memory_controller.write(0x00, 0x0002, 0xFF);
 
         cpu.process_cycle(&mut memory_controller);
@@ -430,6 +445,34 @@ mod tests {
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.accumulator, op_value as u16);
         assert_eq!(2, cpu.processing_data.op_cycles);
+    }
+    #[test]
+    fn rep() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0xC2); // SEI
+        memory_controller.write(0x00, 0x0001, 0xFF);
+        memory_controller.write(0x00, 0x0002, 0xC2); // SEI
+        memory_controller.write(0x00, 0x0003, 0x00);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::REP);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(0xFF, cpu.processor_status);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::REP);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(0b0011_0000, cpu.processor_status);
     }
     #[test]
     fn sei() {

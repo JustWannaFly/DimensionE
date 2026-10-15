@@ -122,7 +122,7 @@ impl CPU {
     fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
             LoadingOp => {
-                println!("Cycles for op: [{}]", self.processing_data.op_cycles);
+                println!("Cycles taken for op: [{}]", self.processing_data.op_cycles);
                 let op_code =
                     self.read_byte(memory_controller, self.program_bank, self.program_counter);
                 self.processing_data = ProcessingDetails {
@@ -158,6 +158,7 @@ impl CPU {
             Operation::CLV => op_impls::clv(self),
             Operation::COP => op_impls::cop(self, memory_controller),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
+            Operation::REP => op_impls::rep(self, memory_controller),
             Operation::SEI => op_impls::sei(self),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
             Operation::XCE => xce(self),
