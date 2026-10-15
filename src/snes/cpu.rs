@@ -1,5 +1,5 @@
 use crate::{
-    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
+    bytes::{combine_bytes, split_bytes}, snes::{
         cpu::{
             ProcessingState::{LoadingOp, Processing}, op_impls::xce, ops::{AddressMode, get_op_size},
         }, memory::MemoryController,
@@ -358,10 +358,9 @@ impl CPU {
         self.write_byte(memory_controller, 0x00, self.stack_pointer, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1)
     }
-    fn stack_pop_byte(&mut self, memory_controller: &mut MemoryController) -> u8 {
+    fn _stack_pop_byte(&mut self, memory_controller: &mut MemoryController) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        let foo = self.read_byte(memory_controller, 0x00, self.stack_pointer);
-        foo
+        self.read_byte(memory_controller, 0x00, self.stack_pointer)
     }
     /// Pushes bytes to the stack one byte per cycle
     ///

@@ -1,14 +1,25 @@
 use crate::snes::cpu::ops::{
     AddressMode::{
-        Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong, AbsoluteLongX, AbsoluteX, AbsoluteY, Accumulator, DirectPage, DirectPageIndirect, DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY, DirectPageX, DirectPageY, Immediate, StackRelative, StackRelativeIndirectY,
-    }, Operation::{ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRA, BRK, BRL, BVC, BVS, CLC, CLD, CLI, CLV, CMP, COP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JML, JMP, JSL, JSR, LDA, LDX, LDY, LSR, MVN, MVP, NOP, ORA, PEA, PEI, PER, PHA, PHB, PHD, PHK, PHP, PHX, PHY, PLA, PLB, PLD, PLP, PLX, PLY, REP, ROL, ROR, RTI, RTL, RTS, SBC, SEC, SED, SEI, SEP, STA, STP, STX, STY, STZ, TAX, TAY, TCD, TCS, TDC, TRB, TSB, TSC, TSX, TXA, TXS, TXY, TYA, TYX, WAI, WDM, XBA, XCE},
+        Absolute, AbsoluteIndirect, AbsoluteIndirectLong, AbsoluteIndirectX, AbsoluteLong,
+        AbsoluteLongX, AbsoluteX, AbsoluteY, Accumulator, DirectPage, DirectPageIndirect,
+        DirectPageIndirectLong, DirectPageIndirectLongY, DirectPageIndirectX, DirectPageIndirectY,
+        DirectPageX, DirectPageY, Immediate, StackRelative, StackRelativeIndirectY,
+    },
+    Operation::{
+        ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRA, BRK, BRL, BVC, BVS, CLC, CLD, CLI,
+        CLV, CMP, COP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JML, JMP, JSL, JSR, LDA, LDX,
+        LDY, LSR, MVN, MVP, NOP, ORA, PEA, PEI, PER, PHA, PHB, PHD, PHK, PHP, PHX, PHY, PLA, PLB,
+        PLD, PLP, PLX, PLY, REP, ROL, ROR, RTI, RTL, RTS, SBC, SEC, SED, SEI, SEP, STA, STP, STX,
+        STY, STZ, TAX, TAY, TCD, TCS, TDC, TRB, TSB, TSC, TSX, TXA, TXS, TXY, TYA, TYX, WAI, WDM,
+        XBA, XCE,
+    },
 };
 
 #[derive(Debug)]
 pub enum Operation {
     ADC(AddressMode), // Add with Carry
-    AND(AddressMode),              // And Accumulator with Memory
-    ASL(AddressMode),              // Arithmetic Shift Left
+    AND(AddressMode), // And Accumulator with Memory
+    ASL(AddressMode), // Arithmetic Shift Left
     // Branches, //
     // Syntax         Name                         Condition             Opcode  Bytes Cycles   Extra
     BCC, //  near     Branch if Carry Clear        carry clear - c=0     $90     2     2        +1 if branch taken, +1 if e=1
@@ -39,23 +50,23 @@ pub enum Operation {
     CPY(AddressMode), // Compare Index Register Y with Memory
     DEC(AddressMode), // Decrement
     DEX,
-    DEY, // Decrement Index Registers
+    DEY,              // Decrement Index Registers
     EOR(AddressMode), // Exclusive OR Accumulator with Memory
     INC(AddressMode), // Increment
     INX,
     INY,              // Increment Index Registers
     JMP(AddressMode), // Jump
-    JML(AddressMode),              // Jump
-    JSR(AddressMode),              // Jump to Subroutine
+    JML(AddressMode), // Jump
+    JSR(AddressMode), // Jump to Subroutine
     JSL,              // Jump to Subroutine
-    LDA(AddressMode),              // Load Accumulator from Memory
-    LDX(AddressMode),              // Load Index Register X from Memory
-    LDY(AddressMode),              // Load Index Register Y from Memory
-    LSR(AddressMode),              // Logical Shift Right
+    LDA(AddressMode), // Load Accumulator from Memory
+    LDX(AddressMode), // Load Index Register X from Memory
+    LDY(AddressMode), // Load Index Register Y from Memory
+    LSR(AddressMode), // Logical Shift Right
     MVN,              // Block Move Next
     MVP,              // Block Move Previous
     NOP,              // No Operation
-    ORA(AddressMode),              // OR Accumulator with Memory
+    ORA(AddressMode), // OR Accumulator with Memory
     PEA,              // Push Effective Absolute Address
     PEI,              // Push Effective Indirect Address
     PER,              // Push Effective PC Relative Indirect Address
@@ -78,12 +89,12 @@ pub enum Operation {
     PLX, // Pull Index Register X          $FA     1      4       +1 if x=0
     PLY, // Pull Index Register Y          $7A     1      4       +1 if x=0
 
-    REP, // Reset Status Bits
+    REP,              // Reset Status Bits
     ROL(AddressMode), // Rotate Left
     ROR(AddressMode), // Rotate Right
-    RTI, // Return From Interrupt
-    RTS, // Return From Subroutine
-    RTL, // Return From Subroutine
+    RTI,              // Return From Interrupt
+    RTS,              // Return From Subroutine
+    RTL,              // Return From Subroutine
     SBC(AddressMode), // Subtract with Borrow from Accumulator
     // Set Status Flags
     //      Name                        Opcode  Bytes  Cycles
@@ -94,8 +105,8 @@ pub enum Operation {
     SEP,              // Set Status Bits
     STA(AddressMode), // Store Accumulator to Memory
     STP,              // Stop the Processor
-    STX(AddressMode),              // Store Index Register X to Memory
-    STY(AddressMode),              // Store Index Register Y to Memory
+    STX(AddressMode), // Store Index Register X to Memory
+    STY(AddressMode), // Store Index Register Y to Memory
     STZ(AddressMode), // Store Zero to Memory
     // Transfer Registers
     // Syntax   Name               Opcode  Bytes  Cycles
@@ -114,14 +125,13 @@ pub enum Operation {
 
     TRB(AddressMode), // Test and Reset Memory Bits Against Accumulator
     TSB(AddressMode), // Test and Set Memory Bits Against Accumulator
-    WAI, // Wait for Interrupt
-    WDM, // Reserved for Future Expansion
-    XBA, // Exchange the B and A Accumulators
-    XCE, // Exchange Carry and Emulation Bits
+    WAI,              // Wait for Interrupt
+    WDM,              // Reserved for Future Expansion
+    XBA,              // Exchange the B and A Accumulators
+    XCE,              // Exchange Carry and Emulation Bits
 }
 
-#[derive(Debug)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum AddressMode {
     Absolute,
     AbsoluteIndirect,
@@ -169,7 +179,6 @@ pub fn get_op_size(address_mode: &AddressMode) -> u16 {
     }
 }
 
-
 pub fn lookup_opcode(opcode: u8) -> Operation {
     match opcode {
         0x00 => BRK,
@@ -188,7 +197,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x0D => ORA(Absolute),
         0x0E => ASL(Absolute),
         0x0F => ORA(AbsoluteLong),
-        
+
         0x10 => BPL,
         0x11 => ORA(DirectPageIndirectY),
         0x12 => ORA(DirectPageIndirect),
@@ -205,7 +214,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x1D => ORA(AbsoluteX),
         0x1E => ASL(AbsoluteX),
         0x1F => ORA(AbsoluteLongX),
-        
+
         0x20 => JSR(Absolute),
         0x21 => AND(DirectPageIndirectX),
         0x22 => JSL,
@@ -222,7 +231,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x2D => AND(Absolute),
         0x2E => ROL(Absolute),
         0x2F => AND(AbsoluteLong),
-        
+
         0x30 => BMI,
         0x31 => AND(DirectPageIndirectY),
         0x32 => AND(DirectPageIndirect),
@@ -273,7 +282,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x5C => JML(AbsoluteLong),
         0x5E => LSR(AbsoluteX),
         0x5F => EOR(AbsoluteLongX),
-        
+
         0x60 => RTS,
         0x61 => ADC(DirectPageIndirectX),
         0x62 => PER,
@@ -290,7 +299,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x6D => ADC(Absolute),
         0x6E => ROR(Absolute),
         0x6F => ADC(AbsoluteLong),
-        
+
         0x70 => BVS,
         0x71 => ADC(DirectPageIndirectY),
         0x72 => ADC(DirectPageIndirect),
@@ -307,7 +316,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x7D => ADC(AbsoluteX),
         0x7E => ROR(AbsoluteX),
         0x7F => ADC(AbsoluteLongX),
-        
+
         0x80 => BRA,
         0x81 => STA(DirectPageIndirectX),
         0x82 => BRL,
@@ -324,7 +333,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x8D => STA(Absolute),
         0x8E => STX(Absolute),
         0x8F => STA(AbsoluteLong),
-        
+
         0x90 => BCC,
         0x91 => STA(DirectPageIndirectY),
         0x92 => STA(DirectPageIndirect),
@@ -341,7 +350,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0x9D => STA(AbsoluteX),
         0x9E => STZ(AbsoluteX),
         0x9F => STA(AbsoluteLongX),
-        
+
         0xA0 => LDY(Immediate),
         0xA1 => LDA(DirectPageIndirectX),
         0xA2 => LDX(Immediate),
@@ -358,7 +367,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xAD => LDA(Absolute),
         0xAE => LDX(Absolute),
         0xAF => LDA(AbsoluteLong),
-        
+
         0xB0 => BCS,
         0xB1 => LDA(DirectPageIndirectY),
         0xB2 => LDA(DirectPageIndirect),
@@ -375,7 +384,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xBD => LDA(AbsoluteX),
         0xBE => LDX(AbsoluteY),
         0xBF => LDA(AbsoluteLongX),
-        
+
         0xC0 => CPY(Immediate),
         0xC1 => CMP(DirectPageIndirectX),
         0xC2 => REP,
@@ -392,7 +401,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xCD => CMP(Absolute),
         0xCE => DEC(Absolute),
         0xCF => CMP(AbsoluteLong),
-        
+
         0xD0 => BNE,
         0xD1 => CMP(DirectPageIndirectY),
         0xD2 => CMP(DirectPageIndirect),
@@ -409,7 +418,7 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xDD => CMP(AbsoluteX),
         0xDE => DEC(AbsoluteX),
         0xDF => CMP(AbsoluteLongX),
-        
+
         0xE0 => CPX(Immediate),
         0xE1 => SBC(DirectPageIndirectX),
         0xE2 => SEP,
@@ -443,6 +452,5 @@ pub fn lookup_opcode(opcode: u8) -> Operation {
         0xFD => SBC(AbsoluteX),
         0xFE => INC(AbsoluteX),
         0xFF => SBC(AbsoluteLongX),
-        
     }
 }
