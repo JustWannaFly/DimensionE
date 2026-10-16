@@ -1,11 +1,8 @@
 use crate::{
-    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes},
-    snes::{
+    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes}, snes::{
         cpu::{
-            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, ProcessingState::LoadingOp,
-            ops::AddressMode,
-        },
-        memory::MemoryController,
+            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK, ProcessingState::LoadingOp, ops::AddressMode,
+        }, memory::MemoryController,
     },
 };
 
@@ -164,6 +161,94 @@ pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     if let Some(operand) = cpu.processing_data.operand {
         cpu.accumulator = operand;
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
+pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    let bytes = split_bytes(cpu.accumulator);
+    let mut required_cycles = 3_u8;
+    if is8bit {
+        if cpu.processing_data.write_count < 1 {
+            cpu.stack_push_byte(memory_controller, bytes.0);
+        } else {
+            cpu.memory_access_delay = None;
+        }
+    } else {
+        if cpu.processing_data.write_count < 2 {
+            cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
+        } else {
+            cpu.memory_access_delay = None;
+        }
+        required_cycles += 1;
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn phb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if cpu.processing_data.write_count < 1 {
+        cpu.stack_push_byte(memory_controller, cpu.data_bank);
+    } else {
+        cpu.memory_access_delay = None;
+    }
+    if cpu.processing_data.op_cycles == 3 {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let bytes = split_bytes(cpu.direct_page);
+    if cpu.processing_data.write_count < 2 {
+        cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
+    } else {
+        cpu.memory_access_delay = None;
+    }
+    
+    if cpu.processing_data.op_cycles == 4 {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn phx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let bytes = split_bytes(cpu.x);
+    let mut required_cycles = 3_u8;
+    if is8bit {
+        if cpu.processing_data.write_count < 1 {
+            cpu.stack_push_byte(memory_controller, bytes.0);
+        } else {
+            cpu.memory_access_delay = None;
+        }
+    } else {
+        if cpu.processing_data.write_count < 2 {
+            cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
+        } else {
+            cpu.memory_access_delay = None;
+        }
+        required_cycles += 1;
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let bytes = split_bytes(cpu.y);
+    let mut required_cycles = 3_u8;
+    if is8bit {
+        if cpu.processing_data.write_count < 1 {
+            cpu.stack_push_byte(memory_controller, bytes.0);
+        } else {
+            cpu.memory_access_delay = None;
+        }
+    } else {
+        if cpu.processing_data.write_count < 2 {
+            cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
+        } else {
+            cpu.memory_access_delay = None;
+        }
+        required_cycles += 1;
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
     }
 }
 pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {

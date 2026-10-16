@@ -158,6 +158,11 @@ impl CPU {
             Operation::CLV => op_impls::clv(self),
             Operation::COP => op_impls::cop(self, memory_controller),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
+            Operation::PHA => op_impls::pha(self, memory_controller),
+            Operation::PHB => op_impls::phb(self, memory_controller),
+            Operation::PHD => op_impls::phd(self, memory_controller),
+            Operation::PHX => op_impls::phx(self, memory_controller),
+            Operation::PHY => op_impls::phy(self, memory_controller),
             Operation::REP => op_impls::rep(self, memory_controller),
             Operation::SEI => op_impls::sei(self),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
@@ -174,6 +179,7 @@ impl CPU {
     ) {
         self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         memory_controller.cpu_bus_write(byte);
+        self.processing_data.write_count += 1;
     }
     /// Writes a 16 bit word to memory stored in little endian format at bank:address and bank:address+1
     ///
@@ -187,7 +193,6 @@ impl CPU {
     ) -> bool {
         if self.processing_data.write_count == 0 {
             self.write_byte(memory_controller, bank, address, split_bytes(word).0);
-            self.processing_data.write_count += 1;
             return false;
         } else {
             self.write_byte(
@@ -377,7 +382,6 @@ impl CPU {
             memory_controller,
             (*stack_values)[self.processing_data.write_count as usize],
         );
-        self.processing_data.write_count += 1;
         self.processing_data.write_count == stack_values.len() as u8
     }
 }
