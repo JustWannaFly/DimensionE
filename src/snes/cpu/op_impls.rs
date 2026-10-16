@@ -3,8 +3,7 @@ use crate::{
     snes::{
         cpu::{
             ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK,
-            ProcessingState::LoadingOp,
-            ops::AddressMode,
+            ProcessingState::LoadingOp, ops::AddressMode,
         },
         memory::MemoryController,
     },
@@ -266,12 +265,12 @@ pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         }
     } else {
         required_cycles += 1;
-        if cpu.processing_data.read_count < 1 {
+        if cpu.processing_data.read_count < 2 {
             let byte = cpu.stack_pop_byte(memory_controller);
             cpu.processing_data.args.push(byte);
-        } else {
+        } else if cpu.processing_data.read_count == 2 {
             cpu.accumulator =
-                combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+                combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
             let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
             let is_zero = Some(cpu.accumulator == 0);
             cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
@@ -296,11 +295,11 @@ pub fn plb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
 }
 pub fn pld(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let required_cycles = 5_u8;
-    if cpu.processing_data.read_count < 1 {
+    if cpu.processing_data.read_count < 2 {
         let byte = cpu.stack_pop_byte(memory_controller);
         cpu.processing_data.args.push(byte);
-    } else {
-        cpu.direct_page = combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+    } else if cpu.processing_data.read_count == 2 {
+        cpu.direct_page = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
         let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
         let is_zero = Some(cpu.direct_page == 0);
         cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
@@ -332,11 +331,11 @@ pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         }
     } else {
         required_cycles += 1;
-        if cpu.processing_data.read_count < 1 {
+        if cpu.processing_data.read_count < 2 {
             let byte = cpu.stack_pop_byte(memory_controller);
             cpu.processing_data.args.push(byte);
-        } else {
-            cpu.x = combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+        } else if cpu.processing_data.read_count == 2 {
+            cpu.x = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
             let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
             let is_zero = Some(cpu.x == 0);
             cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
@@ -359,11 +358,11 @@ pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         }
     } else {
         required_cycles += 1;
-        if cpu.processing_data.read_count < 1 {
+        if cpu.processing_data.read_count < 2 {
             let byte = cpu.stack_pop_byte(memory_controller);
             cpu.processing_data.args.push(byte);
-        } else {
-            cpu.y = combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+        } else if cpu.processing_data.read_count == 2 {
+            cpu.y = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
             let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
             let is_zero = Some(cpu.y == 0);
             cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
@@ -429,11 +428,12 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset, snes::{cpu::{
+        bytes::check_bits_unset,
+        snes::cpu::{
             CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
             ProcessingState::LoadingOp,
             ops::{AddressMode::Immediate, Operation},
-        }},
+        },
     };
 
     use super::*;
@@ -662,7 +662,7 @@ mod tests {
         assert_eq!(2, cpu.processing_data.op_cycles);
     }
     #[test]
-    fn pha () {
+    fn pha() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -676,13 +676,13 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHA);
-        let low= cpu.stack_pop_byte(&mut memory_controller);
-        let high= cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte(&mut memory_controller);
+        let high = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.accumulator, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
-    fn phb () {
+    fn phb() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -695,12 +695,12 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHB);
-        let byte= cpu.stack_pop_byte(&mut memory_controller);
+        let byte = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.data_bank, byte);
         assert_eq!(cpu.processing_data.op_cycles, 3);
     }
     #[test]
-    fn phd () {
+    fn phd() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -714,13 +714,13 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHD);
-        let low= cpu.stack_pop_byte(&mut memory_controller);
-        let high= cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte(&mut memory_controller);
+        let high = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.direct_page, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
-    fn phk () {
+    fn phk() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -733,12 +733,12 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHK);
-        let byte= cpu.stack_pop_byte(&mut memory_controller);
+        let byte = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.program_bank, byte);
         assert_eq!(cpu.processing_data.op_cycles, 3);
     }
     #[test]
-    fn php () {
+    fn php() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -751,12 +751,12 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHP);
-        let byte= cpu.stack_pop_byte(&mut memory_controller);
+        let byte = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.processor_status, byte);
         assert_eq!(cpu.processing_data.op_cycles, 3);
     }
     #[test]
-    fn phx () {
+    fn phx() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -770,13 +770,13 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHX);
-        let low= cpu.stack_pop_byte(&mut memory_controller);
-        let high= cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte(&mut memory_controller);
+        let high = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.x, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
-    fn phy () {
+    fn phy() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
@@ -790,10 +790,133 @@ mod tests {
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHY);
-        let low= cpu.stack_pop_byte(&mut memory_controller);
-        let high= cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte(&mut memory_controller);
+        let high = cpu.stack_pop_byte(&mut memory_controller);
         assert_eq!(cpu.y, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
+    }
+    #[test]
+    fn pla() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.accumulator = 0x0000;
+        memory_controller.write(0x00, 0x0000, 0x68);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        cpu.stack_push_byte(&mut memory_controller, 0x34);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::PLA);
+        assert_eq!(cpu.accumulator, 0x1234);
+        assert_eq!(cpu.processing_data.op_cycles, 5);
+    }
+    #[test]
+    fn plb() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.data_bank = 0x00;
+        memory_controller.write(0x00, 0x0000, 0xAB);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::PLB);
+        assert_eq!(cpu.data_bank, 0x12);
+        assert_eq!(cpu.processing_data.op_cycles, 4);
+    }
+    #[test]
+    fn pld() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.direct_page = 0x0000;
+        memory_controller.write(0x00, 0x0000, 0x2B);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        cpu.stack_push_byte(&mut memory_controller, 0x34);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::PLD);
+        assert_eq!(cpu.direct_page, 0x1234);
+        assert_eq!(cpu.processing_data.op_cycles, 5);
+    }
+    #[test]
+    fn plp() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0x00;
+        memory_controller.write(0x00, 0x0000, 0x28);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::PLP);
+        assert_eq!(cpu.processor_status, 0x12);
+        assert_eq!(cpu.processing_data.op_cycles, 4);
+    }
+    #[test]
+    fn plx() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.x = 0x0000;
+        memory_controller.write(0x00, 0x0000, 0xFA);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        cpu.stack_push_byte(&mut memory_controller, 0x34);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::PLX);
+        assert_eq!(cpu.x, 0x1234);
+        assert_eq!(cpu.processing_data.op_cycles, 5);
+    }
+    #[test]
+    fn ply() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.y = 0x0000;
+        memory_controller.write(0x00, 0x0000, 0x7A);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        cpu.stack_push_byte(&mut memory_controller, 0x34);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::PLY);
+        assert_eq!(cpu.y, 0x1234);
+        assert_eq!(cpu.processing_data.op_cycles, 5);
     }
     #[test]
     fn sei() {
