@@ -113,11 +113,11 @@ impl CPU {
                 }
                 None => ()
             }
-            println!("");
+            // println!("");
             self.ticks_since_cycle = 0;
             self.process_cycle(memory_controller);
         }
-        print!("|");
+        // print!("|");
     }
     fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
@@ -359,6 +359,9 @@ impl CPU {
     }
     fn set_processor_status(&mut self, byte: u8) {
         self.processor_status = byte;
+        if self.emulation_flag {
+            self.processor_status = self.processor_status | INDEX_REG_MASK | ACCUMULATOR_MASK;
+        }
         if check_bits_set(self.processor_status, INDEX_REG_MASK) {
             self.x = combine_bytes(0x00, split_bytes(self.x).0);
             self.y = combine_bytes(0x00, split_bytes(self.y).0);

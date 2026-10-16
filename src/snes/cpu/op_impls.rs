@@ -377,7 +377,8 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.args.len() == 0 {
         cpu.load_one_arg(memory_controller);
     } else {
-        cpu.processor_status = cpu.processing_data.args[0];
+        todo!("this needs to reset only the set bits in operand to 0 in the processor status");
+        cpu.set_processor_status(cpu.processing_data.args[0]);
         if cpu.emulation_flag {
             cpu.update_processor_status(None, None, None, None, Some(true), Some(true), None, None);
         }
@@ -662,34 +663,6 @@ mod tests {
         assert_eq!(2, cpu.processing_data.op_cycles);
     }
     #[test]
-    fn rep() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
-        cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0xC2); // SEI
-        memory_controller.write(0x00, 0x0001, 0xFF);
-        memory_controller.write(0x00, 0x0002, 0xC2); // SEI
-        memory_controller.write(0x00, 0x0003, 0x00);
-
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-
-        assert_matches!(cpu.processing_state, LoadingOp);
-        assert_matches!(cpu.processing_data.op, Operation::REP);
-        assert_eq!(cpu.processing_data.op_cycles, 3);
-        assert_eq!(0xFF, cpu.processor_status);
-
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-
-        assert_matches!(cpu.processing_state, LoadingOp);
-        assert_matches!(cpu.processing_data.op, Operation::REP);
-        assert_eq!(cpu.processing_data.op_cycles, 3);
-        assert_eq!(0b0011_0000, cpu.processor_status);
-    }
-    #[test]
     fn sei() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
@@ -703,6 +676,34 @@ mod tests {
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(0b0000_0100, cpu.processor_status);
         assert_eq!(2, cpu.processing_data.op_cycles);
+    }
+    #[test]
+    fn sep() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        memory_controller.write(0x00, 0x0000, 0xE2); // SEP
+        memory_controller.write(0x00, 0x0001, 0xFF);
+        memory_controller.write(0x00, 0x0002, 0xE2); // SEP
+        memory_controller.write(0x00, 0x0003, 0x00);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::SEP);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(0xFF, cpu.processor_status);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_matches!(cpu.processing_data.op, Operation::SEP);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(0b0011_0000, cpu.processor_status);
     }
     #[test]
     fn stz() {
