@@ -170,14 +170,10 @@ pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if is8bit {
         if cpu.processing_data.write_count < 1 {
             cpu.stack_push_byte(memory_controller, bytes.0);
-        } else {
-            cpu.memory_access_delay = None;
         }
     } else {
         if cpu.processing_data.write_count < 2 {
             cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
-        } else {
-            cpu.memory_access_delay = None;
         }
         required_cycles += 1;
     }
@@ -188,8 +184,6 @@ pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
 pub fn phb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.write_count < 1 {
         cpu.stack_push_byte(memory_controller, cpu.data_bank);
-    } else {
-        cpu.memory_access_delay = None;
     }
     if cpu.processing_data.op_cycles == 3 {
         cpu.advance_program_counter(1);
@@ -199,8 +193,6 @@ pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let bytes = split_bytes(cpu.direct_page);
     if cpu.processing_data.write_count < 2 {
         cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
-    } else {
-        cpu.memory_access_delay = None;
     }
     
     if cpu.processing_data.op_cycles == 4 {
@@ -214,14 +206,10 @@ pub fn phx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if is8bit {
         if cpu.processing_data.write_count < 1 {
             cpu.stack_push_byte(memory_controller, bytes.0);
-        } else {
-            cpu.memory_access_delay = None;
         }
     } else {
         if cpu.processing_data.write_count < 2 {
             cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
-        } else {
-            cpu.memory_access_delay = None;
         }
         required_cycles += 1;
     }
@@ -236,14 +224,10 @@ pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if is8bit {
         if cpu.processing_data.write_count < 1 {
             cpu.stack_push_byte(memory_controller, bytes.0);
-        } else {
-            cpu.memory_access_delay = None;
         }
     } else {
         if cpu.processing_data.write_count < 2 {
             cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
-        } else {
-            cpu.memory_access_delay = None;
         }
         required_cycles += 1;
     }
