@@ -1,5 +1,5 @@
 use crate::{
-    bytes::{combine_bytes, split_bytes}, snes::{
+    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
         cpu::{
             ProcessingState::{LoadingOp, Processing}, op_impls::xce, ops::{AddressMode, get_op_size},
         }, memory::MemoryController,
@@ -161,10 +161,19 @@ impl CPU {
             Operation::PHA => op_impls::pha(self, memory_controller),
             Operation::PHB => op_impls::phb(self, memory_controller),
             Operation::PHD => op_impls::phd(self, memory_controller),
+            Operation::PHK => op_impls::phk(self, memory_controller),
+            Operation::PHP => op_impls::php(self, memory_controller),
             Operation::PHX => op_impls::phx(self, memory_controller),
             Operation::PHY => op_impls::phy(self, memory_controller),
+            Operation::PLA => op_impls::pla(self, memory_controller),
+            Operation::PLB => op_impls::plb(self, memory_controller),
+            Operation::PLD => op_impls::pld(self, memory_controller),
+            Operation::PLP => op_impls::plp(self, memory_controller),
+            Operation::PLX => op_impls::plx(self, memory_controller),
+            Operation::PLY => op_impls::ply(self, memory_controller),
             Operation::REP => op_impls::rep(self, memory_controller),
             Operation::SEI => op_impls::sei(self),
+            Operation::SEP => op_impls::sep(self, memory_controller),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
             Operation::XCE => xce(self),
             _ => todo!("[Operation::{:?}]", self.processing_data.op),
@@ -211,6 +220,7 @@ impl CPU {
         address: u16,
     ) -> u8 {
         self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
+        self.processing_data.read_count += 1;
         memory_controller.cpu_bus_read()
     }
     fn cycle_operand_loading(
@@ -346,6 +356,13 @@ impl CPU {
             None => maintain_mask += NEGATIVE_MASK,
         }
         self.processor_status = (self.processor_status & maintain_mask) | set_mask
+    }
+    fn set_processor_status(&mut self, byte: u8) {
+        self.processor_status = byte;
+        if check_bits_set(self.processor_status, INDEX_REG_MASK) {
+            self.x = combine_bytes(0x00, split_bytes(self.x).0);
+            self.y = combine_bytes(0x00, split_bytes(self.y).0);
+        }
     }
     fn advance_program_counter_with_address_mode(
         &mut self,

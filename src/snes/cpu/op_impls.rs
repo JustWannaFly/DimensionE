@@ -1,8 +1,12 @@
 use crate::{
-    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes}, snes::{
+    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes},
+    snes::{
         cpu::{
-            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK, ProcessingState::LoadingOp, ops::AddressMode,
-        }, memory::MemoryController,
+            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK,
+            ProcessingState::LoadingOp,
+            ops::AddressMode::{self, Accumulator},
+        },
+        memory::MemoryController,
     },
 };
 
@@ -39,12 +43,10 @@ mod helpers {
                 0 => {
                     let byte = cpu.read_byte(memory_controller, 0, brk_vector_lookup);
                     cpu.processing_data.args.push(byte);
-                    cpu.processing_data.read_count += 1;
                 }
                 1 => {
                     let byte = cpu.read_byte(memory_controller, 0, brk_vector_lookup + 1);
                     cpu.processing_data.args.push(byte);
-                    cpu.processing_data.read_count += 1;
                 }
                 _ => {
                     cpu.program_bank = 0x00;
@@ -194,8 +196,24 @@ pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.write_count < 2 {
         cpu.cycle_push_stack(memory_controller, &vec![bytes.0, bytes.1]);
     }
-    
+
     if cpu.processing_data.op_cycles == 4 {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn phk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if cpu.processing_data.write_count < 1 {
+        cpu.stack_push_byte(memory_controller, cpu.program_bank);
+    }
+    if cpu.processing_data.op_cycles == 3 {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn php(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if cpu.processing_data.write_count < 1 {
+        cpu.stack_push_byte(memory_controller, cpu.processor_status);
+    }
+    if cpu.processing_data.op_cycles == 3 {
         cpu.advance_program_counter(1);
     }
 }
@@ -235,6 +253,126 @@ pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    let mut required_cycles = 4_u8;
+    if is8bit {
+        if cpu.processing_data.read_count == 0 {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.accumulator = combine_bytes(0x00, byte);
+            let is_negative = Some(check_bits_set(byte, 0b1000_0000));
+            let is_zero = Some(byte == 0);
+            cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+        }
+    } else {
+        required_cycles += 1;
+        if cpu.processing_data.read_count < 1 {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.processing_data.args.push(byte);
+        } else {
+            cpu.accumulator =
+                combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+            let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
+            let is_zero = Some(cpu.accumulator == 0);
+            cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+        }
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn plb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let required_cycles = 4_u8;
+    if cpu.processing_data.read_count == 0 {
+        let byte = cpu.stack_pop_byte(memory_controller);
+        cpu.data_bank = byte;
+        let is_negative = Some(check_bits_set(byte, 0b1000_0000));
+        let is_zero = Some(byte == 0);
+        cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn pld(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let required_cycles = 5_u8;
+    if cpu.processing_data.read_count < 1 {
+        let byte = cpu.stack_pop_byte(memory_controller);
+        cpu.processing_data.args.push(byte);
+    } else {
+        cpu.direct_page = combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+        let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
+        let is_zero = Some(cpu.direct_page == 0);
+        cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn plp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let required_cycles = 4_u8;
+    if cpu.processing_data.read_count == 0 {
+        let byte = cpu.stack_pop_byte(memory_controller);
+        cpu.set_processor_status(byte);
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let mut required_cycles = 4_u8;
+    if is8bit {
+        if cpu.processing_data.read_count == 0 {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.x = combine_bytes(0x00, byte);
+            let is_negative = Some(check_bits_set(byte, 0b1000_0000));
+            let is_zero = Some(byte == 0);
+            cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+        }
+    } else {
+        required_cycles += 1;
+        if cpu.processing_data.read_count < 1 {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.processing_data.args.push(byte);
+        } else {
+            cpu.x = combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+            let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
+            let is_zero = Some(cpu.x == 0);
+            cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+        }
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
+pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let mut required_cycles = 4_u8;
+    if is8bit {
+        if cpu.processing_data.read_count == 0 {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.y = combine_bytes(0x00, byte);
+            let is_negative = Some(check_bits_set(byte, 0b1000_0000));
+            let is_zero = Some(byte == 0);
+            cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+        }
+    } else {
+        required_cycles += 1;
+        if cpu.processing_data.read_count < 1 {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.processing_data.args.push(byte);
+        } else {
+            cpu.y = combine_bytes(cpu.processing_data.args[0], cpu.processing_data.args[1]);
+            let is_negative = Some(check_bits_set(cpu.processing_data.args[0], 0b1000_0000));
+            let is_zero = Some(cpu.y == 0);
+            cpu.update_processor_status(None, is_zero, None, None, None, None, None, is_negative);
+        }
+    }
+    if cpu.processing_data.op_cycles == required_cycles {
+        cpu.advance_program_counter(1);
+    }
+}
 pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.args.len() == 0 {
         cpu.load_one_arg(memory_controller);
@@ -249,6 +387,14 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
 pub fn sei(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, Some(true), None, None, None, None, None);
     cpu.advance_program_counter(1);
+}
+pub fn sep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if cpu.processing_data.args.len() == 0 {
+        cpu.load_one_arg(memory_controller);
+    } else {
+        cpu.set_processor_status(cpu.processing_data.args[0]);
+        cpu.advance_program_counter(2);
+    }
 }
 pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
