@@ -10,8 +10,9 @@ use std::rc::Rc;
 use softbuffer::Surface;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize, Size};
-use winit::event::WindowEvent;
+use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, OwnedDisplayHandle};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 struct App {
@@ -33,8 +34,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // TODO implement per tick loop logic here
-        // self.emulator.tick();
+        self.emulator.activate();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -83,6 +83,14 @@ impl ApplicationHandler for App {
                 }
 
                 buffer.present().unwrap();
+            }
+            WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+                if matches!(event.physical_key, PhysicalKey::Code(KeyCode::Space)) && matches!(event.state, ElementState::Pressed) {
+                    self.emulator.execute_cpu_op();
+                }
+                if matches!(event.physical_key, PhysicalKey::Code(KeyCode::Enter)) {
+                    self.emulator.should_run = true;
+                }
             }
             _ => (),
         }

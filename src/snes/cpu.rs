@@ -155,7 +155,12 @@ impl CPU {
             }
         }
     }
-
+    pub fn execute_op(&mut self, memory_controller: &mut MemoryController) {
+        self.process_cycle(memory_controller);
+        while !matches!(self.processing_state, LoadingOp) && !self.processing_data.error {
+            self.process_cycle(memory_controller);
+        }
+    }
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
