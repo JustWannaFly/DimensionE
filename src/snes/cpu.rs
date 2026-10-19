@@ -1,8 +1,12 @@
 use crate::{
-    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
+    bytes::{check_bits_set, combine_bytes, split_bytes},
+    snes::{
         cpu::{
-            ProcessingState::{LoadingOp, Processing}, op_impls::xce, ops::{AddressMode, get_op_size},
-        }, memory::MemoryController,
+            ProcessingState::{LoadingOp, Processing},
+            op_impls::xce,
+            ops::{AddressMode, get_op_size},
+        },
+        memory::MemoryController,
     },
 };
 
@@ -34,6 +38,7 @@ struct ProcessingDetails {
     op_cycles: u8,
     write_count: u8,
     read_count: u8,
+    error: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -77,6 +82,7 @@ impl CPU {
                 op_cycles: 0,
                 write_count: 0,
                 read_count: 0,
+                error: false,
             },
         }
     }
@@ -100,24 +106,27 @@ impl CPU {
             op_cycles: 0,
             write_count: 0,
             read_count: 0,
+            error: false,
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
-        self.ticks_since_cycle += 1;
-        let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
-        if self.ticks_since_cycle >= ticks_to_delay {
-            match self.memory_access_delay {
-                Some(_) => {
-                    self.memory_access_delay = None;
+        if !self.processing_data.error {
+            self.ticks_since_cycle += 1;
+            let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
+            if self.ticks_since_cycle >= ticks_to_delay {
+                match self.memory_access_delay {
+                    Some(_) => {
+                        self.memory_access_delay = None;
+                    }
+                    None => (),
                 }
-                None => ()
+                // println!("");
+                self.ticks_since_cycle = 0;
+                self.process_cycle(memory_controller);
             }
-            // println!("");
-            self.ticks_since_cycle = 0;
-            self.process_cycle(memory_controller);
+            // print!("|");
         }
-        // print!("|");
     }
     fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
@@ -132,6 +141,7 @@ impl CPU {
                     op_cycles: 1,
                     write_count: 0,
                     read_count: 0,
+                    error: false,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
@@ -176,7 +186,10 @@ impl CPU {
             Operation::SEP => op_impls::sep(self, memory_controller),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
             Operation::XCE => xce(self),
-            _ => todo!("[Operation::{:?}]", self.processing_data.op),
+            _ => {
+                eprintln!("Unsupported Operation  [Operation::{:?}]", self.processing_data.op);
+                self.processing_data.error = true;
+            }
         }
     }
     fn write_byte(
@@ -239,7 +252,7 @@ impl CPU {
         }
         self.processing_data.operand = Some(self.build_operand_from_args(address_mode, is8bit));
     }
-    fn build_operand_from_args(&self, address_mode: &AddressMode, is8bit: bool) -> u16 {
+    fn build_operand_from_args(&mut self, address_mode: &AddressMode, is8bit: bool) -> u16 {
         let args = &self.processing_data.args;
         match address_mode {
             AddressMode::Absolute => combine_bytes(args[1], args[0]),
@@ -249,7 +262,11 @@ impl CPU {
                 combine_bytes(high_byte, low_byte)
             }
 
-            _ => todo!("[AddressMode::{:?}]", address_mode),
+            _ => {
+                eprintln!("Unsupported AddressMode::{:?}", address_mode);
+                self.processing_data.error = true;
+                0x0000
+            }
         }
     }
     fn load_one_arg(&mut self, memory_controller: &mut MemoryController) {
