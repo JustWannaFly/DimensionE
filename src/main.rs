@@ -63,3 +63,7 @@ impl eframe::App for MyEguiApp {
        self.emulator.tick();
    }
 }
+
+impl eframe::egui:: for MyEguiApp {
+
+}
