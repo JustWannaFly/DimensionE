@@ -17,11 +17,7 @@ fn main() {
     // dispatched any events. This is ideal for games and similar applications.
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = Application {
-        surface: None,
-        window: None,
-        emulator: SnesEmulator::new(),
-    };
+    let mut app = Application::new();
     let cart = snes::memory::cartridge::Cartridge::new(
         fs::read("roms/Zelda A Link to the Past.sfc").expect("should be able to read a rom"),
     );
