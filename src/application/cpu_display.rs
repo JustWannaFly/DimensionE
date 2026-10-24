@@ -60,6 +60,7 @@ impl CpuDisplay {
                 } else {
                     color = BG_COLOR;
                 }
+                // TODO fix crash if text overflows screen
                 self.screen[y.wrapping_add(y_offset as u32) as usize]
                     [x.wrapping_add(x_offset as u32) as usize] = color;
                 row_byte = row_byte << 1;
@@ -79,10 +80,15 @@ impl CpuDisplay {
         }
 
         for index in 0..(buffer.width().get() * buffer.height().get()) {
-            let y = min((index / buffer.width().get()) / SCALE_MULTIPLIER, self.height - 1);
-            let x = min ((index % buffer.width().get()) / SCALE_MULTIPLIER, self.width - 1);
-            let pixel =
-                self.screen[y as usize][x as usize];
+            let y = min(
+                (index / buffer.width().get()) / SCALE_MULTIPLIER,
+                self.height - 1,
+            );
+            let x = min(
+                (index % buffer.width().get()) / SCALE_MULTIPLIER,
+                self.width - 1,
+            );
+            let pixel = self.screen[y as usize][x as usize];
             buffer[index as usize] =
                 ((pixel.0 as u32) << 16) | ((pixel.1 as u32) << 8) | pixel.2 as u32
         }
