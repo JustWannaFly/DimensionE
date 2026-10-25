@@ -3,14 +3,12 @@ use std::{cmp::min, rc::Rc};
 use softbuffer::Buffer;
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
-use crate::application::font::get_display_bits;
+use crate::{application::font::get_display_bits, bytes::{get_byte_as_hex, get_word_as_hex}, snes::cpu::CPU};
 
 pub struct CpuDisplay {
     width: u32,
     height: u32,
     screen: Vec<Vec<(u8, u8, u8)>>,
-
-    title: String,
 }
 
 const BG_COLOR: (u8, u8, u8) = (0, 0, 0);
@@ -21,13 +19,11 @@ const SCALE_MULTIPLIER: u32 = 2;
 
 
 impl CpuDisplay {
-    pub fn new(title: String) -> CpuDisplay {
+    pub fn new() -> CpuDisplay {
         CpuDisplay {
             width: 0,
             height: 0,
             screen: vec![],
-
-            title: title,
         }
     }
     fn resize_screen(&mut self, width: u32, height: u32) {
@@ -43,35 +39,38 @@ impl CpuDisplay {
             self.screen.push(row);
         }
     }
-    pub fn update_screen(&mut self) {
-        const COL_1: u32 = 90;
-        const COL_2: u32 = 230;
-        let title = self.title.clone();
-        self.draw_string(title.as_str(), 50, 10);
-        self.draw_string("1234", COL_1, 25);
-        self.draw_string("1234", COL_1, 40);
-        self.draw_string("y re", COL_1, 55);
-        self.draw_string("dird", COL_1, 70);
-        self.draw_string("1234", COL_1, 85);
-        self.draw_string("1234", COL_1, 100);
-        self.draw_string("1234", COL_1, 115);
-        self.draw_string("1234", COL_1, 130);
-        self.draw_string("1234", COL_1, 145);
+    pub fn update_screen(&mut self, title: &str, cpu: &CPU) {
+        const COL_1: u32 = 85;
+        const COL_2: u32 = 210;
+        self.draw_string(title, 50, 10);
+        self.draw_string(&get_word_as_hex(cpu.accumulator), COL_1, 25);
+        self.draw_string(&get_word_as_hex(cpu.x), COL_1, 40);
+        self.draw_string(&get_word_as_hex(cpu.y), COL_1, 55);
+        self.draw_string(&get_word_as_hex(cpu.direct_page), COL_1, 70);
+        self.draw_string(&get_word_as_hex(cpu.stack_pointer), COL_1, 85);
+        self.draw_string(&get_byte_as_hex(cpu.processor_status), COL_1, 100);
+        self.draw_string(&get_byte_as_hex(cpu.data_bank), COL_1, 115);
+        self.draw_string(&get_byte_as_hex(cpu.program_bank), COL_1, 130);
+        self.draw_string(&get_word_as_hex(cpu.program_counter), COL_1, 145);
 
-        self.draw_string("1234", COL_2, 25);
-        self.draw_string("1234", COL_2, 40);
-        self.draw_string("y re", COL_2, 55);
-        self.draw_string("dird", COL_2, 70);
-        self.draw_string("1234", COL_2, 85);
-        self.draw_string("1234", COL_2, 100);
-        self.draw_string("1234", COL_2, 115);
+        let data = &cpu.processing_data;
+        let operand = match data.operand {
+            Some(value) => get_word_as_hex(value),
+            None => "None".to_string(),
+        };
+
+        self.draw_string(&format!("{:?}", cpu.processing_state), COL_2, 25);
+        self.draw_string(&format!("{:?}", data.op), COL_2, 40); // TODO fix trailing characters not being overwritten
+        self.draw_string(&get_byte_as_hex(data.args.len() as u8), COL_2, 55);
+        self.draw_string(&operand, COL_2, 70);
+        self.draw_string(&get_byte_as_hex(data.op_cycles), COL_2, 85);
+        self.draw_string(&get_byte_as_hex(data.write_count), COL_2, 100);
+        self.draw_string(&get_byte_as_hex(data.read_count), COL_2, 115);
     }
     fn draw_static_labels(&mut self) {
         const COL_1: u32 = 10;
-        const COL_2: u32 = 150;
-        let title = self.title.clone();
+        const COL_2: u32 = 135;
         self.draw_char('[', 40, 10);
-        self.draw_string(title.as_str(), 50, 10);
         self.draw_char(']', 220, 10);
         self.draw_string("accum   :", COL_1, 25);
         self.draw_string("x reg   :", COL_1, 40);
@@ -124,7 +123,7 @@ impl CpuDisplay {
             char_bits = char_bits << CHAR_SIZE;
         }
     }
-    pub fn draw_to_buffer(&mut self, buffer: &mut Buffer<OwnedDisplayHandle, Rc<Window>>) {
+    pub fn draw_to_buffer(&mut self, buffer: &mut Buffer<OwnedDisplayHandle, Rc<Window>>, title: &str, cpu: &CPU) {
         if self.width != buffer.width().get() / SCALE_MULTIPLIER
             || self.height != buffer.height().get() / SCALE_MULTIPLIER
         {
@@ -133,8 +132,8 @@ impl CpuDisplay {
                 buffer.height().get() / SCALE_MULTIPLIER,
             );
             self.draw_static_labels();
-            self.update_screen();
         }
+        self.update_screen(title, cpu);
 
         for index in 0..(buffer.width().get() * buffer.height().get()) {
             let y = min(

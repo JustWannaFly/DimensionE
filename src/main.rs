@@ -1,7 +1,6 @@
 use std::fs;
 
 use crate::application::Application;
-use crate::snes::emulator::emulator::SnesEmulator;
 mod snes;
 
 mod bytes;

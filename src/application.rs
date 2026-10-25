@@ -18,10 +18,12 @@ const DEBUG_WIDTH: u32 = 600;
 const DEBUG_HEIGHT: u32 = 400;
 
 pub struct Application {
-    window: Option<Rc<Window>>,
-    surface: Option<Surface<OwnedDisplayHandle, Rc<Window>>>,
+    display_window: Option<Rc<Window>>,
+    display_window_id: Option<WindowId>,
+    display_surface: Option<Surface<OwnedDisplayHandle, Rc<Window>>>,
 
     debug_window: Option<Rc<Window>>,
+    debug_window_id: Option<WindowId>,
     debug_surface: Option<Surface<OwnedDisplayHandle, Rc<Window>>>,
     debug_display: CpuDisplay,
 
@@ -31,11 +33,13 @@ pub struct Application {
 impl Application {
     pub fn new() -> Application {
         Application {
-            surface: None,
-            window: None,
+            display_surface: None,
+            display_window: None,
+            display_window_id: None,
             debug_window: None,
+            debug_window_id: None,
             debug_surface: None,
-            debug_display: CpuDisplay:: new("Testy & Boi".to_string()),
+            debug_display: CpuDisplay::new(),
 
             emulator: SnesEmulator::new(),
         }
@@ -54,26 +58,32 @@ impl ApplicationHandler for Application {
                 .unwrap(),
         );
         let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
-        self.surface = Some(softbuffer::Surface::new(&context, window.clone()).unwrap());
-        self.window = Some(window);
+        self.display_surface = Some(softbuffer::Surface::new(&context, window.clone()).unwrap());
+        self.display_window_id = Some(window.id());
+        self.display_window = Some(window);
+        self.display_window.as_ref().unwrap().request_redraw();
 
         let debug_window = Rc::new(
             event_loop
                 .create_window(
                     Window::default_attributes()
                         .with_title("DimensionE CPU")
-                        .with_inner_size(LogicalSize::new(DEBUG_WIDTH, DEBUG_HEIGHT))
+                        .with_inner_size(LogicalSize::new(DEBUG_WIDTH, DEBUG_HEIGHT)),
                 )
                 .unwrap(),
         );
         let debug_context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
-        self.debug_surface = Some(softbuffer::Surface::new(&debug_context, debug_window.clone()).unwrap());
+        self.debug_surface =
+            Some(softbuffer::Surface::new(&debug_context, debug_window.clone()).unwrap());
+        self.debug_window_id = Some(debug_window.id());
         self.debug_window = Some(debug_window);
+        self.debug_window.as_ref().unwrap().request_redraw();
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         self.emulator.activate();
-        self.window.as_ref().unwrap().request_redraw();
+        // self.window.as_ref().unwrap().request_redraw();
+        self.debug_window.as_ref().unwrap().request_redraw();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -83,66 +93,12 @@ impl ApplicationHandler for Application {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                let Some(surface) = &mut self.surface else {
-                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
-                    return;
-                };
-                let Some(window) = &self.window else {
-                    eprintln!("RedrawRequested with window not set");
-                    return;
-                };
-
-                let size = window.inner_size();
-                surface
-                    .resize(
-                        NonZeroU32::new(size.width).unwrap(),
-                        NonZeroU32::new(size.height).unwrap(),
-                    )
-                    .unwrap();
-                let mut display_buffer = surface.buffer_mut().unwrap();
-                for index in 0..(display_buffer.width().get() * display_buffer.height().get()) {
-                    let mut y = (((index / display_buffer.width().get()) / 4) * 3) + 0x7FFD;
-                    let mut x = (index % display_buffer.width().get()) / 4;
-                    while x > 0xFF {
-                        x -= 0xFF;
-                    }
-                    while y > 0xFFFF {
-                        y -= 0xFFFF;
-                    }
-                    let red = self.emulator.memory_controller.read_byte(x as u8, y as u16);
-                    let green = self
-                        .emulator
-                        .memory_controller
-                        .read_byte(x as u8, (y as u16).wrapping_add(1));
-                    let blue = self
-                        .emulator
-                        .memory_controller
-                        .read_byte(x as u8, (y as u16).wrapping_add(2));
-
-                    display_buffer[index as usize] =
-                        blue as u32 | ((green as u32) << 8) | ((red as u32) << 16);
+                if id == self.display_window_id.unwrap() {
+                    self.draw_display_window();
                 }
-
-                display_buffer.present().unwrap();
-
-                
-                let Some(debug_surface) = &mut self.debug_surface else {
-                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
-                    return;
-                };
-                let Some(debug_window) = &self.debug_window else {
-                    eprintln!("Trying to redraw not initialized debug_window");
-                    return;
-                };
-                debug_surface
-                    .resize(
-                        NonZeroU32::new(debug_window.inner_size().width).unwrap(),
-                        NonZeroU32::new(debug_window.inner_size().height).unwrap(),
-                    )
-                    .unwrap();
-                let mut debug_buffer = debug_surface.buffer_mut().unwrap();
-                self.debug_display.draw_to_buffer(&mut debug_buffer);
-                debug_buffer.present().unwrap();
+                if id == self.debug_window_id.unwrap() {
+                    self.draw_debug_window();
+                }
             }
             WindowEvent::KeyboardInput {
                 device_id: _,
@@ -191,5 +147,70 @@ impl ApplicationHandler for Application {
 
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
         let _ = event_loop;
+    }
+}
+
+impl Application {
+    fn draw_display_window(&mut self) {
+        let Some(surface) = &mut self.display_surface else {
+            eprintln!("RedrawRequested fired before Resumed or after Suspended");
+            return;
+        };
+        let Some(window) = &self.display_window else {
+            eprintln!("RedrawRequested with window not set");
+            return;
+        };
+
+        let size = window.inner_size();
+        surface
+            .resize(
+                NonZeroU32::new(size.width).unwrap(),
+                NonZeroU32::new(size.height).unwrap(),
+            )
+            .unwrap();
+        let mut display_buffer = surface.buffer_mut().unwrap();
+        for index in 0..(display_buffer.width().get() * display_buffer.height().get()) {
+            let mut y = (((index / display_buffer.width().get()) / 4) * 3) + 0x7FFD;
+            let mut x = (index % display_buffer.width().get()) / 4;
+            while x > 0xFF {
+                x -= 0xFF;
+            }
+            while y > 0xFFFF {
+                y -= 0xFFFF;
+            }
+            let red = self.emulator.memory_controller.read_byte(x as u8, y as u16);
+            let green = self
+                .emulator
+                .memory_controller
+                .read_byte(x as u8, (y as u16).wrapping_add(1));
+            let blue = self
+                .emulator
+                .memory_controller
+                .read_byte(x as u8, (y as u16).wrapping_add(2));
+
+            display_buffer[index as usize] =
+                blue as u32 | ((green as u32) << 8) | ((red as u32) << 16);
+        }
+
+        display_buffer.present().unwrap();
+    }
+    fn draw_debug_window(&mut self) {
+        let Some(debug_surface) = &mut self.debug_surface else {
+            eprintln!("RedrawRequested fired before Resumed or after Suspended");
+            return;
+        };
+        let Some(debug_window) = &self.debug_window else {
+            eprintln!("Trying to redraw not initialized debug_window");
+            return;
+        };
+        debug_surface
+            .resize(
+                NonZeroU32::new(debug_window.inner_size().width).unwrap(),
+                NonZeroU32::new(debug_window.inner_size().height).unwrap(),
+            )
+            .unwrap();
+        let mut debug_buffer = debug_surface.buffer_mut().unwrap();
+        self.debug_display.draw_to_buffer(&mut debug_buffer, &self.emulator.get_cart_title(), &self.emulator.cpu);
+        debug_buffer.present().unwrap();
     }
 }

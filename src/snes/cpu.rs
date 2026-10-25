@@ -26,37 +26,37 @@ const NEGATIVE_MASK: u8 = 0b1000_0000;
 const BASE_CPU_SPEED: u8 = 6;
 
 #[derive(Debug)]
-enum ProcessingState {
+pub enum ProcessingState {
     LoadingOp,
     Processing,
 }
 
-struct ProcessingDetails {
-    op: Operation,
-    args: Vec<u8>,
-    operand: Option<u16>,
-    op_cycles: u8,
-    write_count: u8,
-    read_count: u8,
+pub struct ProcessingDetails {
+    pub op: Operation,
+    pub args: Vec<u8>,
+    pub operand: Option<u16>,
+    pub op_cycles: u8,
+    pub write_count: u8,
+    pub read_count: u8,
     error: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
-    accumulator: u16,
-    x: u16,
-    y: u16,
-    direct_page: u16,
-    stack_pointer: u16,
-    processor_status: u8,
-    data_bank: u8,
-    program_bank: u8,
-    program_counter: u16,
-    emulation_flag: bool,
+    pub accumulator: u16,
+    pub x: u16,
+    pub y: u16,
+    pub direct_page: u16,
+    pub stack_pointer: u16,
+    pub processor_status: u8,
+    pub data_bank: u8,
+    pub program_bank: u8,
+    pub program_counter: u16,
+    pub emulation_flag: bool,
     memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
 
-    processing_state: ProcessingState,
-    processing_data: ProcessingDetails,
+    pub processing_state: ProcessingState,
+    pub processing_data: ProcessingDetails,
 }
 impl CPU {
     pub fn new() -> CPU {
