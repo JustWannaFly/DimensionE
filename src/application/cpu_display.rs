@@ -59,8 +59,8 @@ impl CpuDisplay {
             None => "None".to_string(),
         };
 
-        self.draw_string(&format!("{:?}", cpu.processing_state), COL_2, 25);
-        self.draw_string(&format!("{:?}", data.op), COL_2, 40); // TODO fix trailing characters not being overwritten
+        self.draw_string(&format!("{:?} ", cpu.processing_state), COL_2, 25);
+        self.draw_string(&format!("{:?}    ", data.op), COL_2, 40); // TODO fix trailing characters not being overwritten
         self.draw_string(&get_byte_as_hex(data.args.len() as u8), COL_2, 55);
         self.draw_string(&operand, COL_2, 70);
         self.draw_string(&get_byte_as_hex(data.op_cycles), COL_2, 85);

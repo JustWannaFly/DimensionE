@@ -105,6 +105,11 @@ impl ApplicationHandler for Application {
                 event,
                 is_synthetic: _,
             } => {
+                if matches!(event.physical_key, PhysicalKey::Code(KeyCode::ArrowRight))
+                    && matches!(event.state, ElementState::Pressed)
+                {
+                    self.emulator.cycle_cpu();
+                }
                 if matches!(event.physical_key, PhysicalKey::Code(KeyCode::Space))
                     && matches!(event.state, ElementState::Pressed)
                 {

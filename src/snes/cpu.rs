@@ -128,7 +128,7 @@ impl CPU {
             // print!("|");
         }
     }
-    fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
+    pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
             LoadingOp => {
                 println!("Cycles taken for op: [{}]", self.processing_data.op_cycles);
@@ -156,7 +156,9 @@ impl CPU {
         }
     }
     pub fn execute_op(&mut self, memory_controller: &mut MemoryController) {
-        self.process_cycle(memory_controller);
+        if matches!(self.processing_state, LoadingOp) {
+            self.process_cycle(memory_controller);
+        }
         while !matches!(self.processing_state, LoadingOp) && !self.processing_data.error {
             self.process_cycle(memory_controller);
         }
@@ -192,7 +194,10 @@ impl CPU {
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
             Operation::XCE => xce(self),
             _ => {
-                eprintln!("Unsupported Operation  [Operation::{:?}]", self.processing_data.op);
+                eprintln!(
+                    "Unsupported Operation  [Operation::{:?}]",
+                    self.processing_data.op
+                );
                 self.processing_data.error = true;
             }
         }

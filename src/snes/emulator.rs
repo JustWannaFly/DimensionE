@@ -31,6 +31,9 @@ pub mod emulator {
         pub fn tick(&mut self) {
             self.cpu.tick(&mut self.memory_controller);
         }
+        pub fn cycle_cpu(&mut self) {
+            self.cpu.process_cycle(&mut self.memory_controller);
+        }
         pub fn execute_cpu_op(&mut self) {
             self.cpu.execute_op(&mut self.memory_controller);
         }
