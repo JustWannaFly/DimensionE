@@ -15,8 +15,10 @@ pub struct CpuDisplay {
 
 const BG_COLOR: (u8, u8, u8) = (0, 0, 0);
 const TEXT_COLOR: (u8, u8, u8) = (128, 128, 128);
+const CHAR_SIZE: u8 = 8;
 
 const SCALE_MULTIPLIER: u32 = 2;
+
 
 impl CpuDisplay {
     pub fn new(title: String) -> CpuDisplay {
@@ -42,10 +44,61 @@ impl CpuDisplay {
         }
     }
     pub fn update_screen(&mut self) {
-        self.draw_char(self.title.chars().nth(0).unwrap(), 10, 20);
+        const COL_1: u32 = 90;
+        const COL_2: u32 = 230;
+        let title = self.title.clone();
+        self.draw_string(title.as_str(), 50, 10);
+        self.draw_string("1234", COL_1, 25);
+        self.draw_string("1234", COL_1, 40);
+        self.draw_string("y re", COL_1, 55);
+        self.draw_string("dird", COL_1, 70);
+        self.draw_string("1234", COL_1, 85);
+        self.draw_string("1234", COL_1, 100);
+        self.draw_string("1234", COL_1, 115);
+        self.draw_string("1234", COL_1, 130);
+        self.draw_string("1234", COL_1, 145);
+
+        self.draw_string("1234", COL_2, 25);
+        self.draw_string("1234", COL_2, 40);
+        self.draw_string("y re", COL_2, 55);
+        self.draw_string("dird", COL_2, 70);
+        self.draw_string("1234", COL_2, 85);
+        self.draw_string("1234", COL_2, 100);
+        self.draw_string("1234", COL_2, 115);
+    }
+    fn draw_static_labels(&mut self) {
+        const COL_1: u32 = 10;
+        const COL_2: u32 = 150;
+        let title = self.title.clone();
+        self.draw_char('[', 40, 10);
+        self.draw_string(title.as_str(), 50, 10);
+        self.draw_char(']', 220, 10);
+        self.draw_string("accum   :", COL_1, 25);
+        self.draw_string("x reg   :", COL_1, 40);
+        self.draw_string("y reg   :", COL_1, 55);
+        self.draw_string("dir  pg :", COL_1, 70);
+        self.draw_string("stk ptr :", COL_1, 85);
+        self.draw_string("status  :", COL_1, 100);
+        self.draw_string("data bnk:", COL_1, 115);
+        self.draw_string("pgrm bnk:", COL_1, 130);
+        self.draw_string("pgrm ctr:", COL_1, 145);
+
+        self.draw_string("state   :", COL_2, 25);
+        self.draw_string("opertion:", COL_2, 40);
+        self.draw_string("arg cnt :", COL_2, 55);
+        self.draw_string("operand :", COL_2, 70);
+        self.draw_string("cycle ct:", COL_2, 85);
+        self.draw_string("write ct:", COL_2, 100);
+        self.draw_string("read ct :", COL_2, 115);
+    }
+    fn draw_string(&mut self, string: &str, x: u32, y: u32) {
+        let mut x_offset = 0_u32;
+        for character in string.chars() {
+            self.draw_char(character, x + x_offset, y);
+            x_offset += CHAR_SIZE as u32;
+        }
     }
     fn draw_char(&mut self, character: char, x: u32, y: u32) {
-        const CHAR_SIZE: u8 = 8;
         const HIGH_BYTE_MASK: u64 = 0xFF00_0000_0000_0000;
         const HIGH_BIT_MASK: u8 = 0x80;
 
@@ -79,6 +132,7 @@ impl CpuDisplay {
                 buffer.width().get() / SCALE_MULTIPLIER,
                 buffer.height().get() / SCALE_MULTIPLIER,
             );
+            self.draw_static_labels();
             self.update_screen();
         }
 
