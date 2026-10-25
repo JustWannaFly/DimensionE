@@ -1,6 +1,8 @@
 use softbuffer::Surface;
+use std::alloc::System;
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, WindowEvent};
@@ -17,6 +19,8 @@ mod font;
 const DEBUG_WIDTH: u32 = 600;
 const DEBUG_HEIGHT: u32 = 400;
 
+const FRAME_DRAW_DELAY: u128 = 1000 / 60; // (millis / target) FPS
+
 pub struct Application {
     display_window: Option<Rc<Window>>,
     display_window_id: Option<WindowId>,
@@ -26,6 +30,8 @@ pub struct Application {
     debug_window_id: Option<WindowId>,
     debug_surface: Option<Surface<OwnedDisplayHandle, Rc<Window>>>,
     debug_display: CpuDisplay,
+
+    last_draw: Instant,
 
     pub emulator: SnesEmulator,
 }
@@ -40,6 +46,8 @@ impl Application {
             debug_window_id: None,
             debug_surface: None,
             debug_display: CpuDisplay::new(),
+
+            last_draw: Instant::now(),
 
             emulator: SnesEmulator::new(),
         }
@@ -82,8 +90,13 @@ impl ApplicationHandler for Application {
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         self.emulator.activate();
-        // self.window.as_ref().unwrap().request_redraw();
-        self.debug_window.as_ref().unwrap().request_redraw();
+
+        // TODO fix timing of all activations this is crude and not desired behavior
+        let draw_duration = self.last_draw.elapsed().as_millis();
+        if draw_duration >= FRAME_DRAW_DELAY {
+            self.display_window.as_ref().unwrap().request_redraw();
+            self.debug_window.as_ref().unwrap().request_redraw();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -93,6 +106,7 @@ impl ApplicationHandler for Application {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
+                self.last_draw = Instant::now();
                 if id == self.display_window_id.unwrap() {
                     self.draw_display_window();
                 }
