@@ -1,8 +1,12 @@
 use crate::{
-    bytes::{check_bits_set, combine_bytes, split_bytes}, snes::{
+    bytes::{check_bits_set, combine_bytes, split_bytes},
+    snes::{
         cpu::{
-            ProcessingState::{LoadingOp, Processing}, op_impls::xce, ops::{AddressMode, get_op_size},
-        }, memory::MemoryController,
+            ProcessingState::{LoadingOp, Processing},
+            op_impls::xce,
+            ops::{AddressMode, get_op_size},
+        },
+        memory::MemoryController,
     },
 };
 
@@ -22,36 +26,38 @@ const NEGATIVE_MASK: u8 = 0b1000_0000;
 const BASE_CPU_SPEED: u8 = 6;
 
 #[derive(Debug)]
-enum ProcessingState {
+pub enum ProcessingState {
     LoadingOp,
     Processing,
 }
 
-struct ProcessingDetails {
-    op: Operation,
-    args: Vec<u8>,
-    operand: Option<u16>,
-    op_cycles: u8,
-    write_count: u8,
-    read_count: u8,
+pub struct ProcessingDetails {
+    pub op: Operation,
+    pub args: Vec<u8>,
+    pub operand: Option<u16>,
+    pub op_cycles: u8,
+    pub write_count: u8,
+    pub read_count: u8,
+    pub op_error: bool,
+    pub address_error: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
-    accumulator: u16,
-    x: u16,
-    y: u16,
-    direct_page: u16,
-    stack_pointer: u16,
-    processor_status: u8,
-    data_bank: u8,
-    program_bank: u8,
-    program_counter: u16,
-    emulation_flag: bool,
+    pub accumulator: u16,
+    pub x: u16,
+    pub y: u16,
+    pub direct_page: u16,
+    pub stack_pointer: u16,
+    pub processor_status: u8,
+    pub data_bank: u8,
+    pub program_bank: u8,
+    pub program_counter: u16,
+    pub emulation_flag: bool,
     memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
 
-    processing_state: ProcessingState,
-    processing_data: ProcessingDetails,
+    pub processing_state: ProcessingState,
+    pub processing_data: ProcessingDetails,
 }
 impl CPU {
     pub fn new() -> CPU {
@@ -77,6 +83,8 @@ impl CPU {
                 op_cycles: 0,
                 write_count: 0,
                 read_count: 0,
+                op_error: false,
+                address_error: false,
             },
         }
     }
@@ -100,26 +108,30 @@ impl CPU {
             op_cycles: 0,
             write_count: 0,
             read_count: 0,
+            op_error: false,
+            address_error: false,
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
-        self.ticks_since_cycle += 1;
-        let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
-        if self.ticks_since_cycle >= ticks_to_delay {
-            match self.memory_access_delay {
-                Some(_) => {
-                    self.memory_access_delay = None;
+        if !(self.processing_data.op_error || self.processing_data.address_error) {
+            self.ticks_since_cycle += 1;
+            let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
+            if self.ticks_since_cycle >= ticks_to_delay {
+                match self.memory_access_delay {
+                    Some(_) => {
+                        self.memory_access_delay = None;
+                    }
+                    None => (),
                 }
-                None => ()
+                // println!("");
+                self.ticks_since_cycle = 0;
+                self.process_cycle(memory_controller);
             }
-            // println!("");
-            self.ticks_since_cycle = 0;
-            self.process_cycle(memory_controller);
+            // print!("|");
         }
-        // print!("|");
     }
-    fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
+    pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
             LoadingOp => {
                 println!("Cycles taken for op: [{}]", self.processing_data.op_cycles);
@@ -132,6 +144,8 @@ impl CPU {
                     op_cycles: 1,
                     write_count: 0,
                     read_count: 0,
+                    op_error: false,
+                    address_error: false,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
@@ -145,7 +159,14 @@ impl CPU {
             }
         }
     }
-
+    pub fn execute_op(&mut self, memory_controller: &mut MemoryController) {
+        if matches!(self.processing_state, LoadingOp) {
+            self.process_cycle(memory_controller);
+        }
+        while !matches!(self.processing_state, LoadingOp) && !(self.processing_data.op_error || self.processing_data.address_error) {
+            self.process_cycle(memory_controller);
+        }
+    }
     fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
@@ -176,7 +197,13 @@ impl CPU {
             Operation::SEP => op_impls::sep(self, memory_controller),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
             Operation::XCE => xce(self),
-            _ => todo!("[Operation::{:?}]", self.processing_data.op),
+            _ => {
+                eprintln!(
+                    "Unsupported Operation  [Operation::{:?}]",
+                    self.processing_data.op
+                );
+                self.processing_data.op_error = true;
+            }
         }
     }
     fn write_byte(
@@ -239,7 +266,7 @@ impl CPU {
         }
         self.processing_data.operand = Some(self.build_operand_from_args(address_mode, is8bit));
     }
-    fn build_operand_from_args(&self, address_mode: &AddressMode, is8bit: bool) -> u16 {
+    fn build_operand_from_args(&mut self, address_mode: &AddressMode, is8bit: bool) -> u16 {
         let args = &self.processing_data.args;
         match address_mode {
             AddressMode::Absolute => combine_bytes(args[1], args[0]),
@@ -249,7 +276,11 @@ impl CPU {
                 combine_bytes(high_byte, low_byte)
             }
 
-            _ => todo!("[AddressMode::{:?}]", address_mode),
+            _ => {
+                eprintln!("Unsupported AddressMode::{:?}", address_mode);
+                self.processing_data.address_error = true;
+                0x0000
+            }
         }
     }
     fn load_one_arg(&mut self, memory_controller: &mut MemoryController) {

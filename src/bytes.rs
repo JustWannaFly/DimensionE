@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 /// combine_bytes(high: 0x12, low: 0x34) -> 0x1234
 pub fn combine_bytes(high: u8, low: u8) -> u16 {
     ((high as u16) << 8) | low as u16
@@ -42,6 +44,36 @@ pub fn encode_bdc(bdc_value: u16) -> u16 {
     (thousands << 12) | (hundreds << 8) | (tens << 4) | ones
 }
 
+pub fn get_byte_as_hex(byte: u8) -> String {
+    let first_char = (byte & 0xF0) >> 4;
+    let second_char = byte & 0x0F;
+    fn get_hex_char(byte: u8) -> String {
+        match byte {
+            0 => "0".to_string(),
+            1 => "1".to_string(),
+            2 => "2".to_string(),
+            3 => "3".to_string(),
+            4 => "4".to_string(),
+            5 => "5".to_string(),
+            6 => "6".to_string(),
+            7 => "7".to_string(),
+            8 => "8".to_string(),
+            9 => "9".to_string(),
+            10 => "A".to_string(),
+            11 => "B".to_string(),
+            12 => "C".to_string(),
+            13 => "D".to_string(),
+            14 => "E".to_string(),
+            15 => "F".to_string(),
+            _ => "".to_string(),
+        }
+    }
+    get_hex_char(first_char).add(get_hex_char(second_char).as_str())
+}
+pub fn get_word_as_hex(word: u16) -> String {
+    let bytes = split_bytes(word);
+    get_byte_as_hex(bytes.1).add(get_byte_as_hex(bytes.0).as_str())
+}
 #[cfg(test)]
 mod byte_tests {
     use crate::bytes::{
