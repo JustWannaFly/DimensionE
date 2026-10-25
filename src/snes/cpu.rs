@@ -38,7 +38,8 @@ pub struct ProcessingDetails {
     pub op_cycles: u8,
     pub write_count: u8,
     pub read_count: u8,
-    error: bool,
+    pub op_error: bool,
+    pub address_error: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -82,7 +83,8 @@ impl CPU {
                 op_cycles: 0,
                 write_count: 0,
                 read_count: 0,
-                error: false,
+                op_error: false,
+                address_error: false,
             },
         }
     }
@@ -106,12 +108,13 @@ impl CPU {
             op_cycles: 0,
             write_count: 0,
             read_count: 0,
-            error: false,
+            op_error: false,
+            address_error: false,
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
-        if !self.processing_data.error {
+        if !(self.processing_data.op_error || self.processing_data.address_error) {
             self.ticks_since_cycle += 1;
             let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
             if self.ticks_since_cycle >= ticks_to_delay {
@@ -141,7 +144,8 @@ impl CPU {
                     op_cycles: 1,
                     write_count: 0,
                     read_count: 0,
-                    error: false,
+                    op_error: false,
+                    address_error: false,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
@@ -159,7 +163,7 @@ impl CPU {
         if matches!(self.processing_state, LoadingOp) {
             self.process_cycle(memory_controller);
         }
-        while !matches!(self.processing_state, LoadingOp) && !self.processing_data.error {
+        while !matches!(self.processing_state, LoadingOp) && !(self.processing_data.op_error || self.processing_data.address_error) {
             self.process_cycle(memory_controller);
         }
     }
@@ -198,7 +202,7 @@ impl CPU {
                     "Unsupported Operation  [Operation::{:?}]",
                     self.processing_data.op
                 );
-                self.processing_data.error = true;
+                self.processing_data.op_error = true;
             }
         }
     }
@@ -274,7 +278,7 @@ impl CPU {
 
             _ => {
                 eprintln!("Unsupported AddressMode::{:?}", address_mode);
-                self.processing_data.error = true;
+                self.processing_data.address_error = true;
                 0x0000
             }
         }

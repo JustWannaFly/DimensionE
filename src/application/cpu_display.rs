@@ -60,12 +60,14 @@ impl CpuDisplay {
         };
 
         self.draw_string(&format!("{:?} ", cpu.processing_state), COL_2, 25);
-        self.draw_string(&format!("{:?}    ", data.op), COL_2, 40); // TODO fix trailing characters not being overwritten
+        self.draw_string(&format!("{:?}              ", data.op), COL_2, 40);
         self.draw_string(&get_byte_as_hex(data.args.len() as u8), COL_2, 55);
         self.draw_string(&operand, COL_2, 70);
         self.draw_string(&get_byte_as_hex(data.op_cycles), COL_2, 85);
         self.draw_string(&get_byte_as_hex(data.write_count), COL_2, 100);
         self.draw_string(&get_byte_as_hex(data.read_count), COL_2, 115);
+        self.draw_string(&format!("{:?} ", data.op_error), COL_2, 130);
+        self.draw_string(&format!("{:?} ", data.address_error), COL_2, 145);
     }
     fn draw_static_labels(&mut self) {
         const COL_1: u32 = 10;
@@ -89,6 +91,8 @@ impl CpuDisplay {
         self.draw_string("cycle ct:", COL_2, 85);
         self.draw_string("write ct:", COL_2, 100);
         self.draw_string("read ct :", COL_2, 115);
+        self.draw_string("op error:", COL_2, 130);
+        self.draw_string("addr err:", COL_2, 145);
     }
     fn draw_string(&mut self, string: &str, x: u32, y: u32) {
         let mut x_offset = 0_u32;
