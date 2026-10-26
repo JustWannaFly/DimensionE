@@ -1,14 +1,21 @@
 use crate::{
-    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes}, snes::{
+    bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes},
+    snes::{
         cpu::{
-            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, NEGATIVE_MASK, OVERFLOW_MASK, ProcessingState::LoadingOp, ZERO_MASK, ops::AddressMode,
-        }, memory::MemoryController,
+            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK,
+            NEGATIVE_MASK, OVERFLOW_MASK,
+            ProcessingState::LoadingOp,
+            ZERO_MASK,
+            op_impls::helpers::{branch_if_clear, branch_if_set},
+            ops::AddressMode,
+        },
+        memory::MemoryController,
     },
 };
 
 mod helpers {
     use crate::{
-        bytes::{combine_bytes, split_bytes},
+        bytes::{check_bits_set, check_bits_unset, combine_bytes, split_bytes},
         snes::{
             cpu::{CPU, ProcessingState::LoadingOp},
             memory::MemoryController,
@@ -54,6 +61,54 @@ mod helpers {
             }
             false
         }
+    }
+    fn branch_near_helper(
+        cpu: &mut CPU,
+        memory_controller: &mut MemoryController,
+        take_branch: bool,
+    ) {
+        if take_branch {
+            let mut last_cycle = 3_u8;
+            if cpu.processing_data.read_count == 0 {
+                cpu.load_one_arg(memory_controller);
+            } else {
+                let offset = cpu.processing_data.args[0] as i8;
+
+                let destination_address: u16;
+                let did_wrap: bool;
+                if offset < 0 {
+                    destination_address = cpu.program_counter.wrapping_sub(offset.unsigned_abs() as u16);
+                    did_wrap = destination_address > cpu.program_counter;
+                } else {
+                    destination_address = cpu.program_counter.wrapping_add(offset as u16);
+                    did_wrap = destination_address < cpu.program_counter;
+                };
+                // if wraps and in emulation mode add a 1 cycle penalty
+                if cpu.emulation_flag && did_wrap {
+                    last_cycle += 1;
+                }
+                if cpu.processing_data.op_cycles == last_cycle {
+                    cpu.program_counter = destination_address;
+                    cpu.processing_state = LoadingOp;
+                }
+            }
+        } else {
+            cpu.advance_program_counter(2);
+        }
+    }
+    pub(crate) fn branch_if_set(
+        cpu: &mut CPU,
+        memory_controller: &mut MemoryController,
+        bit_mask: u8,
+    ) {
+        branch_near_helper(cpu, memory_controller, check_bits_set(cpu.processor_status, bit_mask));
+    }
+    pub(crate) fn branch_if_clear(
+        cpu: &mut CPU,
+        memory_controller: &mut MemoryController,
+        bit_mask: u8,
+    ) {
+        branch_near_helper(cpu, memory_controller, check_bits_unset(cpu.processor_status, bit_mask));
     }
 }
 pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
@@ -103,6 +158,24 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
+pub fn bcc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_clear(cpu, memory_controller, CARRY_MASK);
+}
+pub fn bcs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_set(cpu, memory_controller, CARRY_MASK);
+}
+pub fn beq(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_set(cpu, memory_controller, ZERO_MASK);
+}
+pub fn bmi(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_set(cpu, memory_controller, NEGATIVE_MASK);
+}
+pub fn bne(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_clear(cpu, memory_controller, ZERO_MASK);
+}
+pub fn bpl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_clear(cpu, memory_controller, NEGATIVE_MASK);
+}
 pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE6, 0xFFFE);
     if helper_completed {
@@ -128,6 +201,12 @@ pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.program_counter = updated_address;
         cpu.processing_state = LoadingOp;
     }
+}
+pub fn bvc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_clear(cpu, memory_controller, OVERFLOW_MASK);
+}
+pub fn bvs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_if_set(cpu, memory_controller, OVERFLOW_MASK);
 }
 pub fn clc(cpu: &mut CPU) {
     cpu.update_processor_status(Some(false), None, None, None, None, None, None, None);
@@ -374,20 +453,61 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.load_one_arg(memory_controller);
     } else {
         let arg = cpu.processing_data.args[0];
-        let carry = if check_bits_set(arg, CARRY_MASK) { Some(false) } else { None };
-        let zero = if check_bits_set(arg, ZERO_MASK) { Some(false) } else { None };
-        let irq_disable = if check_bits_set(arg, IRQ_MASK) { Some(false) } else { None };
-        let decimal_mode = if check_bits_set(arg, DECIMAL_MASK) { Some(false) } else { None };
-        let mut index_register_select = if check_bits_set(arg, INDEX_REG_MASK) { Some(false) } else { None };
-        let mut accumulator_select = if check_bits_set(arg, ACCUMULATOR_MASK) { Some(false) } else { None };
-        let overflow = if check_bits_set(arg, OVERFLOW_MASK) { Some(false) } else { None };
-        let negative = if check_bits_set(arg, NEGATIVE_MASK) { Some(false) } else { None };
+        let carry = if check_bits_set(arg, CARRY_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let zero = if check_bits_set(arg, ZERO_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let irq_disable = if check_bits_set(arg, IRQ_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let decimal_mode = if check_bits_set(arg, DECIMAL_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let mut index_register_select = if check_bits_set(arg, INDEX_REG_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let mut accumulator_select = if check_bits_set(arg, ACCUMULATOR_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let overflow = if check_bits_set(arg, OVERFLOW_MASK) {
+            Some(false)
+        } else {
+            None
+        };
+        let negative = if check_bits_set(arg, NEGATIVE_MASK) {
+            Some(false)
+        } else {
+            None
+        };
 
         if cpu.emulation_flag {
             index_register_select = Some(true);
             accumulator_select = Some(true);
         }
-        cpu.update_processor_status(carry, zero, irq_disable, decimal_mode, index_register_select, accumulator_select, overflow, negative);
+        cpu.update_processor_status(
+            carry,
+            zero,
+            irq_disable,
+            decimal_mode,
+            index_register_select,
+            accumulator_select,
+            overflow,
+            negative,
+        );
         cpu.advance_program_counter(2);
     }
 }
@@ -927,7 +1047,7 @@ mod tests {
     }
     #[test]
     fn rep() {
-    let mut cpu = CPU::new();
+        let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
         cpu.processor_status = 0xFF;

@@ -175,8 +175,16 @@ impl CPU {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
             Operation::ADC(address_mode) => op_impls::adc(self, memory_controller, &address_mode),
+            Operation::BCC => op_impls::bcc(self, memory_controller),
+            Operation::BCS => op_impls::bcs(self, memory_controller),
+            Operation::BEQ => op_impls::beq(self, memory_controller),
+            Operation::BMI => op_impls::bmi(self, memory_controller),
+            Operation::BNE => op_impls::bne(self, memory_controller),
+            Operation::BPL => op_impls::bpl(self, memory_controller),
             Operation::BRK => op_impls::brk(self, memory_controller),
             Operation::BRL => op_impls::brl(self, memory_controller),
+            Operation::BVC => op_impls::bvc(self, memory_controller),
+            Operation::BVS => op_impls::bvs(self, memory_controller),
             Operation::CLC => op_impls::clc(self),
             Operation::CLD => op_impls::cld(self),
             Operation::CLI => op_impls::cli(self),

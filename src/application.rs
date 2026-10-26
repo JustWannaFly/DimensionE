@@ -1,5 +1,4 @@
 use softbuffer::Surface;
-use std::alloc::System;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Instant;
@@ -19,7 +18,7 @@ mod font;
 const DEBUG_WIDTH: u32 = 600;
 const DEBUG_HEIGHT: u32 = 400;
 
-const FRAME_DRAW_DELAY: u128 = 1000 / 60; // (millis / target) FPS
+const FRAME_DRAW_DELAY: u128 = 1000 / 10; // (millis / target) FPS
 
 pub struct Application {
     display_window: Option<Rc<Window>>,
