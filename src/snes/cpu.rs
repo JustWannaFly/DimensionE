@@ -40,6 +40,7 @@ pub struct ProcessingDetails {
     pub read_count: u8,
     pub op_error: bool,
     pub address_error: bool,
+    pub debug_pause: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -85,6 +86,7 @@ impl CPU {
                 read_count: 0,
                 op_error: false,
                 address_error: false,
+                debug_pause: false,
             },
         }
     }
@@ -110,6 +112,7 @@ impl CPU {
             read_count: 0,
             op_error: false,
             address_error: false,
+            debug_pause: false,
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
@@ -146,6 +149,7 @@ impl CPU {
                     read_count: 0,
                     op_error: false,
                     address_error: false,
+                    debug_pause: false,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
