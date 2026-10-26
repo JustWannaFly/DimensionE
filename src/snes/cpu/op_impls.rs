@@ -74,13 +74,13 @@ mod helpers {
             } else {
                 let offset = cpu.processing_data.args[0] as i8;
 
-                let destination_address: u16;
+                let mut destination_address = cpu.program_counter.wrapping_add(2);
                 let did_wrap: bool;
                 if offset < 0 {
-                    destination_address = cpu.program_counter.wrapping_sub(offset.unsigned_abs() as u16);
+                    destination_address = destination_address.wrapping_sub(offset.unsigned_abs() as u16);
                     did_wrap = destination_address > cpu.program_counter;
                 } else {
-                    destination_address = cpu.program_counter.wrapping_add(offset as u16);
+                    destination_address = destination_address.wrapping_add(offset as u16);
                     did_wrap = destination_address < cpu.program_counter;
                 };
                 // if wraps and in emulation mode add a 1 cycle penalty
@@ -509,6 +509,37 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
             negative,
         );
         cpu.advance_program_counter(2);
+    }
+}
+pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    match cpu.processing_data.op_cycles {
+        2 => (),
+        3 => {
+            let mut status = cpu.stack_pop_byte(memory_controller);
+            if cpu.emulation_flag {
+                status = status | ACCUMULATOR_MASK | INDEX_REG_MASK;
+            }
+            cpu.processor_status = status;
+        }
+        4..=5 => {
+            let byte = cpu.stack_pop_byte(memory_controller);
+            cpu.processing_data.args.push(byte);
+        }
+        6 => {
+            cpu.program_counter = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
+            if cpu.emulation_flag {
+                cpu.processing_state = LoadingOp;
+            }
+        }
+        7 => {
+            let bank = cpu.stack_pop_byte(memory_controller);
+            cpu.program_bank = bank;
+            cpu.processing_state = LoadingOp;
+        }
+        _ => {
+            dbg!(cpu.processing_data.op_cycles);
+            panic!("Should not be in RTI logic at op cycle count");
+        }
     }
 }
 pub fn sei(cpu: &mut CPU) {
