@@ -6,7 +6,7 @@ use crate::{
             NEGATIVE_MASK, OVERFLOW_MASK,
             ProcessingState::LoadingOp,
             ZERO_MASK,
-            op_impls::helpers::{branch_if_clear, branch_if_set},
+            op_impls::helpers::{branch_if_clear, branch_if_set, branch_near_helper},
             ops::AddressMode,
         },
         memory::MemoryController,
@@ -62,7 +62,7 @@ mod helpers {
             false
         }
     }
-    fn branch_near_helper(
+    pub fn branch_near_helper(
         cpu: &mut CPU,
         memory_controller: &mut MemoryController,
         take_branch: bool,
@@ -77,7 +77,8 @@ mod helpers {
                 let mut destination_address = cpu.program_counter.wrapping_add(2);
                 let did_wrap: bool;
                 if offset < 0 {
-                    destination_address = destination_address.wrapping_sub(offset.unsigned_abs() as u16);
+                    destination_address =
+                        destination_address.wrapping_sub(offset.unsigned_abs() as u16);
                     did_wrap = destination_address > cpu.program_counter;
                 } else {
                     destination_address = destination_address.wrapping_add(offset as u16);
@@ -101,16 +102,25 @@ mod helpers {
         memory_controller: &mut MemoryController,
         bit_mask: u8,
     ) {
-        branch_near_helper(cpu, memory_controller, check_bits_set(cpu.processor_status, bit_mask));
+        branch_near_helper(
+            cpu,
+            memory_controller,
+            check_bits_set(cpu.processor_status, bit_mask),
+        );
     }
     pub(crate) fn branch_if_clear(
         cpu: &mut CPU,
         memory_controller: &mut MemoryController,
         bit_mask: u8,
     ) {
-        branch_near_helper(cpu, memory_controller, check_bits_unset(cpu.processor_status, bit_mask));
+        branch_near_helper(
+            cpu,
+            memory_controller,
+            check_bits_unset(cpu.processor_status, bit_mask),
+        );
     }
 }
+/// Add with Carry
 pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
@@ -158,24 +168,35 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
+/// Branch Carry Clear
 pub fn bcc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_clear(cpu, memory_controller, CARRY_MASK);
 }
+/// Branch Carry Set
 pub fn bcs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_set(cpu, memory_controller, CARRY_MASK);
 }
+/// Branch Zero Set
 pub fn beq(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_set(cpu, memory_controller, ZERO_MASK);
 }
+/// Branch Negative Set
 pub fn bmi(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_set(cpu, memory_controller, NEGATIVE_MASK);
 }
+/// Branch Zero Clear
 pub fn bne(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_clear(cpu, memory_controller, ZERO_MASK);
 }
+/// Branch Negative Clear
 pub fn bpl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_clear(cpu, memory_controller, NEGATIVE_MASK);
 }
+/// Branch Always
+pub fn bra(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    branch_near_helper(cpu, memory_controller, true)
+}
+/// Software Interrupt
 pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE6, 0xFFFE);
     if helper_completed {
@@ -183,6 +204,7 @@ pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.update_processor_status(None, None, Some(true), Some(false), flag, None, None, None);
     }
 }
+/// Branch Always Long
 pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.args.len() < 2 {
         cpu.load_one_arg(memory_controller);
@@ -202,34 +224,42 @@ pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.processing_state = LoadingOp;
     }
 }
+/// Branch Overflow Clear
 pub fn bvc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_clear(cpu, memory_controller, OVERFLOW_MASK);
 }
+/// Branch Overflow Set
 pub fn bvs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_set(cpu, memory_controller, OVERFLOW_MASK);
 }
+/// Clear Carry Flag
 pub fn clc(cpu: &mut CPU) {
     cpu.update_processor_status(Some(false), None, None, None, None, None, None, None);
     cpu.advance_program_counter(1);
 }
+/// Clear Decimal Flag
 pub fn cld(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, None, Some(false), None, None, None, None);
     cpu.advance_program_counter(1);
 }
+/// Clear Interrupt Flag
 pub fn cli(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, Some(false), None, None, None, None, None);
     cpu.advance_program_counter(1);
 }
+/// Clear Overflow Flag
 pub fn clv(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, None, None, None, None, Some(false), None);
     cpu.advance_program_counter(1);
 }
+/// Co-Processor Interrupt
 pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE4, 0xFFF4);
     if helper_completed {
         cpu.update_processor_status(None, None, Some(true), Some(false), None, None, None, None);
     }
 }
+/// Load Accumulator
 pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
@@ -240,6 +270,7 @@ pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
+/// Push Accumulator
 pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     let bytes = split_bytes(cpu.accumulator);
@@ -258,6 +289,7 @@ pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Push Data Bank
 pub fn phb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.write_count < 1 {
         cpu.stack_push_byte(memory_controller, cpu.data_bank);
@@ -266,6 +298,7 @@ pub fn phb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Push Direct Page
 pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let bytes = split_bytes(cpu.direct_page);
     if cpu.processing_data.write_count < 2 {
@@ -276,6 +309,7 @@ pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Push Program Bank
 pub fn phk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.write_count < 1 {
         cpu.stack_push_byte(memory_controller, cpu.program_bank);
@@ -284,6 +318,7 @@ pub fn phk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Push Status
 pub fn php(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.write_count < 1 {
         cpu.stack_push_byte(memory_controller, cpu.processor_status);
@@ -292,6 +327,7 @@ pub fn php(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Push X
 pub fn phx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let bytes = split_bytes(cpu.x);
@@ -310,6 +346,7 @@ pub fn phx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Push Y
 pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let bytes = split_bytes(cpu.y);
@@ -328,6 +365,7 @@ pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Pull Accumulator
 pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     let mut required_cycles = 4_u8;
@@ -356,6 +394,7 @@ pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Pull Data Bank
 pub fn plb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let required_cycles = 4_u8;
     if cpu.processing_data.read_count == 0 {
@@ -369,6 +408,7 @@ pub fn plb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Pull Direct Page
 pub fn pld(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let required_cycles = 5_u8;
     if cpu.processing_data.read_count < 2 {
@@ -384,6 +424,7 @@ pub fn pld(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Pull Status
 pub fn plp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let required_cycles = 4_u8;
     if cpu.processing_data.read_count == 0 {
@@ -394,6 +435,7 @@ pub fn plp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Pull X
 pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let mut required_cycles = 4_u8;
@@ -421,6 +463,7 @@ pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Pull Y
 pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let mut required_cycles = 4_u8;
@@ -448,6 +491,7 @@ pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(1);
     }
 }
+/// Reset Status Bits
 pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.args.len() == 0 {
         cpu.load_one_arg(memory_controller);
@@ -511,6 +555,7 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(2);
     }
 }
+/// Return from Interrupt
 pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     match cpu.processing_data.op_cycles {
         2 => (),
@@ -526,7 +571,8 @@ pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
             cpu.processing_data.args.push(byte);
         }
         6 => {
-            cpu.program_counter = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
+            cpu.program_counter =
+                combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
             if cpu.emulation_flag {
                 cpu.processing_state = LoadingOp;
             }
@@ -542,10 +588,12 @@ pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         }
     }
 }
+/// Set Interrupt Disable Flag
 pub fn sei(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, Some(true), None, None, None, None, None);
     cpu.advance_program_counter(1);
 }
+/// Set Status Bits
 pub fn sep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if cpu.processing_data.args.len() == 0 {
         cpu.load_one_arg(memory_controller);
@@ -554,6 +602,7 @@ pub fn sep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(2);
     }
 }
+/// Store Zero
 pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     match cpu.processing_data.operand {
@@ -571,6 +620,7 @@ pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         }
     }
 }
+/// Exchange Carry and Emulation Bits
 pub fn xce(cpu: &mut CPU) {
     let enter_emulation = check_bits_set(cpu.processor_status, CARRY_MASK);
     let carry = Some(cpu.emulation_flag);

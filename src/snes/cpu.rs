@@ -181,6 +181,7 @@ impl CPU {
             Operation::BMI => op_impls::bmi(self, memory_controller),
             Operation::BNE => op_impls::bne(self, memory_controller),
             Operation::BPL => op_impls::bpl(self, memory_controller),
+            Operation::BRA => op_impls::bra(self, memory_controller),
             Operation::BRK => op_impls::brk(self, memory_controller),
             Operation::BRL => op_impls::brl(self, memory_controller),
             Operation::BVC => op_impls::bvc(self, memory_controller),
