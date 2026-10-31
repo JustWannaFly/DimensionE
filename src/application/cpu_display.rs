@@ -58,10 +58,11 @@ impl CpuDisplay {
             Some(value) => get_word_as_hex(value),
             None => "None".to_string(),
         };
+        let arg_strings: Vec<String> = data.args.iter().map(|arg| get_byte_as_hex(*arg)).collect();
 
         self.draw_string(&format!("{:?} ", cpu.processing_state), COL_2, 25);
         self.draw_string(&format!("{:?}              ", data.op), COL_2, 40);
-        self.draw_string(&get_byte_as_hex(data.args.len() as u8), COL_2, 55);
+        self.draw_string(&format!("{:?}           ", &arg_strings.join(":")), COL_2, 55);
         self.draw_string(&operand, COL_2, 70);
         self.draw_string(&get_byte_as_hex(data.op_cycles), COL_2, 85);
         self.draw_string(&get_byte_as_hex(data.write_count), COL_2, 100);
@@ -74,23 +75,23 @@ impl CpuDisplay {
         const COL_2: u32 = 135;
         self.draw_char('[', 40, 10);
         self.draw_char(']', 220, 10);
-        self.draw_string("accum   :", COL_1, 25);
-        self.draw_string("x reg   :", COL_1, 40);
-        self.draw_string("y reg   :", COL_1, 55);
-        self.draw_string("dir  pg :", COL_1, 70);
-        self.draw_string("stk ptr :", COL_1, 85);
-        self.draw_string("status  :", COL_1, 100);
+        self.draw_string("   accum:", COL_1, 25);
+        self.draw_string("   x reg:", COL_1, 40);
+        self.draw_string("   y reg:", COL_1, 55);
+        self.draw_string(" dir  pg:", COL_1, 70);
+        self.draw_string(" stk ptr:", COL_1, 85);
+        self.draw_string("  status:", COL_1, 100);
         self.draw_string("data bnk:", COL_1, 115);
         self.draw_string("pgrm bnk:", COL_1, 130);
         self.draw_string("pgrm ctr:", COL_1, 145);
 
-        self.draw_string("state   :", COL_2, 25);
+        self.draw_string("   state:", COL_2, 25);
         self.draw_string("opertion:", COL_2, 40);
-        self.draw_string("arg cnt :", COL_2, 55);
+        self.draw_string("    args:", COL_2, 55);
         self.draw_string("operand :", COL_2, 70);
         self.draw_string("cycle ct:", COL_2, 85);
         self.draw_string("write ct:", COL_2, 100);
-        self.draw_string("read ct :", COL_2, 115);
+        self.draw_string(" read ct:", COL_2, 115);
         self.draw_string("op error:", COL_2, 130);
         self.draw_string("addr err:", COL_2, 145);
     }
