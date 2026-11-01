@@ -48,7 +48,7 @@ pub struct CPU {
     pub x: u16,
     pub y: u16,
     pub direct_page: u16,
-    pub stack_pointer: u16,
+    pub stack_pointer: u16, // TODO emulation mode this is 8 bits
     pub processor_status: u8,
     pub data_bank: u8,
     pub program_bank: u8,
@@ -210,6 +210,18 @@ impl CPU {
             Operation::SEI => op_impls::sei(self),
             Operation::SEP => op_impls::sep(self, memory_controller),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
+            Operation::TAX => op_impls::tax(self),
+            Operation::TAY => op_impls::tay(self),
+            Operation::TCD => op_impls::tcd(self),
+            Operation::TCS => op_impls::tcs(self),
+            Operation::TDC => op_impls::tdc(self),
+            Operation::TSC => op_impls::tsc(self),
+            Operation::TSX => op_impls::tsx(self),
+            Operation::TXA => op_impls::txa(self),
+            Operation::TXS => op_impls::txs(self),
+            Operation::TXY => op_impls::txy(self),
+            Operation::TYA => op_impls::tya(self),
+            Operation::TYX => op_impls::tyx(self),
             Operation::XCE => xce(self),
             _ => {
                 eprintln!(

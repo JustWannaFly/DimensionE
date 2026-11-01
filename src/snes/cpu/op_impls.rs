@@ -620,6 +620,268 @@ pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         }
     }
 }
+/// Register Transfer: Accumulator to X
+pub fn tax(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, INDEX_REG_MASK) {
+        // transfer 8 bits
+        let accu_bytes = split_bytes(cpu.accumulator);
+        let x_bytes = split_bytes(cpu.x);
+        cpu.x = combine_bytes(x_bytes.1, accu_bytes.0);
+        is_negative = accu_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.x = cpu.accumulator;
+        is_negative = cpu.x & 0x8000 != 0;
+    }
+    let is_zero = cpu.x == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Accumulator to Y
+pub fn tay(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, INDEX_REG_MASK) {
+        // transfer 8 bits
+        let accu_bytes = split_bytes(cpu.accumulator);
+        let y_bytes = split_bytes(cpu.y);
+        cpu.y = combine_bytes(y_bytes.1, accu_bytes.0);
+        is_negative = accu_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.y = cpu.accumulator;
+        is_negative = cpu.y & 0x8000 != 0;
+    }
+    let is_zero = cpu.y == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Accumulator to Direct Page
+pub fn tcd(cpu: &mut CPU) {
+    cpu.direct_page = cpu.accumulator;
+    let is_negative = cpu.direct_page & 0x8000 != 0;
+    let is_zero = cpu.direct_page == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Accumulator to Stack Pointer
+pub fn tcs(cpu: &mut CPU) {
+    cpu.stack_pointer = cpu.accumulator;
+    let is_negative = cpu.stack_pointer & 0x8000 != 0;
+    let is_zero = cpu.stack_pointer == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Direct Page to Accumulator
+pub fn tdc(cpu: &mut CPU) {
+    cpu.accumulator = cpu.direct_page;
+    let is_negative = cpu.accumulator & 0x8000 != 0;
+    let is_zero = cpu.accumulator == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Stack Pointer to Accumulator
+pub fn tsc(cpu: &mut CPU) {
+    cpu.accumulator = cpu.stack_pointer;
+    let is_negative = cpu.accumulator & 0x8000 != 0;
+    let is_zero = cpu.accumulator == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Stack Pointer to X
+pub fn tsx(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, INDEX_REG_MASK) {
+        // transfer 8 bits
+        let stack_pointer_bytes = split_bytes(cpu.stack_pointer);
+        let x_bytes = split_bytes(cpu.x);
+        cpu.x = combine_bytes(x_bytes.1, stack_pointer_bytes.0);
+        is_negative = stack_pointer_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.x = cpu.stack_pointer;
+        is_negative = cpu.x & 0x8000 != 0;
+    }
+    let is_zero = cpu.x == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: X to Accumulator
+pub fn txa(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, INDEX_REG_MASK) {
+        // transfer 8 bits
+        let x_bytes = split_bytes(cpu.x);
+        let accu_bytes = split_bytes(cpu.accumulator);
+        cpu.accumulator = combine_bytes(accu_bytes.1, x_bytes.0);
+        is_negative = x_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.accumulator = cpu.x;
+        is_negative = cpu.accumulator & 0x8000 != 0;
+    }
+    let is_zero = cpu.accumulator == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: X to Stack Pointer
+pub fn txs(cpu: &mut CPU) {
+    if cpu.emulation_flag {
+        // transfer 8 bits
+        let x_bytes = split_bytes(cpu.x);
+        let stack_pointer_bytes = split_bytes(cpu.stack_pointer);
+        cpu.stack_pointer = combine_bytes(stack_pointer_bytes.1, x_bytes.0);
+    } else {
+        cpu.stack_pointer = cpu.x;
+    }
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: X to Y
+pub fn txy(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, INDEX_REG_MASK) {
+        // transfer 8 bits
+        let x_bytes = split_bytes(cpu.x);
+        let y_bytes = split_bytes(cpu.y);
+        cpu.y = combine_bytes(y_bytes.1, x_bytes.0);
+        is_negative = x_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.y = cpu.x;
+        is_negative = cpu.y & 0x8000 != 0;
+    }
+    let is_zero = cpu.y == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Y to Accumulator
+pub fn tya(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, ACCUMULATOR_MASK) {
+        // transfer 8 bits
+        let y_bytes = split_bytes(cpu.y);
+        let accum_bytes = split_bytes(cpu.accumulator);
+        cpu.accumulator = combine_bytes(accum_bytes.1, y_bytes.0);
+        is_negative = y_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.accumulator = cpu.y;
+        is_negative = cpu.accumulator & 0x8000 != 0;
+    }
+    let is_zero = cpu.accumulator == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Register Transfer: Y to X
+pub fn tyx(cpu: &mut CPU) {
+    let is_negative;
+    if check_bits_set(cpu.processor_status, INDEX_REG_MASK) {
+        // transfer 8 bits
+        let y_bytes = split_bytes(cpu.y);
+        let x_bytes = split_bytes(cpu.x);
+        cpu.x = combine_bytes(x_bytes.1, y_bytes.0);
+        is_negative = y_bytes.0 & 0x80 != 0;
+    } else {
+        cpu.x = cpu.y;
+        is_negative = cpu.x & 0x8000 != 0;
+    }
+    let is_zero = cpu.x == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
 /// Exchange Carry and Emulation Bits
 pub fn xce(cpu: &mut CPU) {
     let enter_emulation = check_bits_set(cpu.processor_status, CARRY_MASK);
