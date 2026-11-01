@@ -168,6 +168,32 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
+/// Arithmetic Shift Left
+pub fn asl(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    match address_mode {
+        AddressMode::Accumulator => {
+            let is_carry = cpu.accumulator & 0x8000 != 0;
+            cpu.accumulator = cpu.accumulator << 1;
+            let is_negative = cpu.accumulator & 0x8000 != 0;
+            let is_zero = cpu.accumulator == 0;
+            cpu.update_processor_status(
+                Some(is_carry),
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(is_negative),
+            );
+            cpu.advance_program_counter(1);
+        }
+        _ => {
+            cpu.processing_data.op_error = true;
+            eprint!("unimplemented address mode for ASL");
+        }
+    }
+}
 /// Branch Carry Clear
 pub fn bcc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_clear(cpu, memory_controller, CARRY_MASK);
@@ -267,6 +293,18 @@ pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
     if let Some(operand) = cpu.processing_data.operand {
         cpu.accumulator = operand;
+        let is_negative = cpu.accumulator & 0x8000 != 0;
+        let is_zero = cpu.accumulator == 0;
+        cpu.update_processor_status(
+            None,
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
@@ -602,19 +640,74 @@ pub fn sep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         cpu.advance_program_counter(2);
     }
 }
+/// Store X
+pub fn stx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    match cpu.processing_data.address {
+        None => cpu.cycle_address_loading(address_mode, memory_controller),
+        Some(address) => {
+            if is8bit {
+                cpu.write_byte(
+                    memory_controller,
+                    address.0,
+                    address.1,
+                    split_bytes(cpu.x).0,
+                );
+            } else {
+                cpu.cycle_write_word(memory_controller, address.0, address.1, cpu.x);
+            }
+            if cpu.processing_data.write_count == 2 || is8bit {
+                if split_bytes(cpu.direct_page).0 != 0 && cpu.processing_data.delay_count == 0 {
+                    cpu.processing_data.delay_count += 1;
+                    return ();
+                }
+                cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
+            }
+        }
+    }
+}
+/// Store Y
+pub fn sty(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    match cpu.processing_data.address {
+        None => cpu.cycle_address_loading(address_mode, memory_controller),
+        Some(address) => {
+            if is8bit {
+                cpu.write_byte(
+                    memory_controller,
+                    address.0,
+                    address.1,
+                    split_bytes(cpu.y).0,
+                );
+            } else {
+                cpu.cycle_write_word(memory_controller, address.0, address.1, cpu.y);
+            }
+            if cpu.processing_data.write_count == 2 || is8bit {
+                if split_bytes(cpu.direct_page).0 != 0 && cpu.processing_data.delay_count == 0 {
+                    cpu.processing_data.delay_count += 1;
+                    return ();
+                }
+                cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
+            }
+        }
+    }
+}
 /// Store Zero
 pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
-    match cpu.processing_data.operand {
-        None => cpu.cycle_operand_loading(address_mode, memory_controller, is8bit),
+    match cpu.processing_data.address {
+        None => cpu.cycle_address_loading(address_mode, memory_controller),
         Some(address) => {
-            let mut is_complete = false;
             if is8bit {
-                cpu.write_byte(memory_controller, 0x00, address, 0x00);
+                cpu.write_byte(memory_controller, address.0, address.1, 0x00);
             } else {
-                is_complete = cpu.cycle_write_word(memory_controller, 0, address, 0);
+                cpu.cycle_write_word(memory_controller, address.0, address.1, 0);
             }
-            if is_complete || is8bit {
+            if cpu.processing_data.write_count == 2 || is8bit {
+                if split_bytes(cpu.direct_page).0 != 0 && cpu.processing_data.delay_count == 0 {
+                    cpu.processing_data.delay_count += 1;
+                    return ();
+                }
                 cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
             }
         }
@@ -1592,6 +1685,10 @@ mod tests {
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         memory_controller.write(0x00, 0x0000, 0x40);
+        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        cpu.stack_push_byte(&mut memory_controller, 0x34);
+        cpu.stack_push_byte(&mut memory_controller, 0x56);
+        cpu.stack_push_byte(&mut memory_controller, 0xAB);
 
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
@@ -1604,7 +1701,9 @@ mod tests {
         assert_matches!(cpu.processing_data.op, Operation::RTI);
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.processing_data.op_cycles, 7);
-        assert_eq!(cpu.program_counter, 0x0000);
+        assert_eq!(cpu.processor_status, 0xAB);
+        assert_eq!(cpu.program_bank, 0x12);
+        assert_eq!(cpu.program_counter, 0x3456);
     }
     #[test]
     fn sei() {

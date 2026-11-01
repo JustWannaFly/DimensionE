@@ -35,9 +35,11 @@ pub struct ProcessingDetails {
     pub op: Operation,
     pub args: Vec<u8>,
     pub operand: Option<u16>,
+    pub address: Option<(u8, u16)>,
     pub op_cycles: u8,
     pub write_count: u8,
     pub read_count: u8,
+    pub delay_count: u8,
     pub op_error: bool,
     pub address_error: bool,
     pub debug_pause: bool,
@@ -56,6 +58,7 @@ pub struct CPU {
     pub emulation_flag: bool,
     memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
+    ops_executed: u32,
 
     pub processing_state: ProcessingState,
     pub processing_data: ProcessingDetails,
@@ -75,15 +78,18 @@ impl CPU {
             emulation_flag: true,
             memory_access_delay: None,
             ticks_since_cycle: BASE_CPU_SPEED,
+            ops_executed: 0,
 
             processing_state: LoadingOp,
             processing_data: ProcessingDetails {
                 op: Operation::NOP,
                 args: vec![],
                 operand: None,
+                address: None,
                 op_cycles: 0,
                 write_count: 0,
                 read_count: 0,
+                delay_count: 0,
                 op_error: false,
                 address_error: false,
                 debug_pause: false,
@@ -107,9 +113,11 @@ impl CPU {
             op: Operation::NOP,
             args: vec![],
             operand: None,
+            address: None,
             op_cycles: 0,
             write_count: 0,
             read_count: 0,
+            delay_count: 0,
             op_error: false,
             address_error: false,
             debug_pause: false,
@@ -137,16 +145,22 @@ impl CPU {
     pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
             LoadingOp => {
-                println!("Cycles taken for op: [{}]", self.processing_data.op_cycles);
+                println!(
+                    "Cycles taken for op: [{}] :: Total Ops: [{}]",
+                    self.processing_data.op_cycles, self.ops_executed
+                );
+                self.ops_executed = self.ops_executed.wrapping_add(1);
                 let op_code =
                     self.read_byte(memory_controller, self.program_bank, self.program_counter);
                 self.processing_data = ProcessingDetails {
                     op: lookup_opcode(op_code),
                     args: vec![],
                     operand: None,
+                    address: None,
                     op_cycles: 1,
                     write_count: 0,
                     read_count: 0,
+                    delay_count: 0,
                     op_error: false,
                     address_error: false,
                     debug_pause: false,
@@ -167,7 +181,9 @@ impl CPU {
         if matches!(self.processing_state, LoadingOp) {
             self.process_cycle(memory_controller);
         }
-        while !matches!(self.processing_state, LoadingOp) && !(self.processing_data.op_error || self.processing_data.address_error) {
+        while !matches!(self.processing_state, LoadingOp)
+            && !(self.processing_data.op_error || self.processing_data.address_error)
+        {
             self.process_cycle(memory_controller);
         }
     }
@@ -175,6 +191,7 @@ impl CPU {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
             Operation::ADC(address_mode) => op_impls::adc(self, memory_controller, &address_mode),
+            Operation::ASL(address_mode) => op_impls::asl(self, memory_controller, &address_mode),
             Operation::BCC => op_impls::bcc(self, memory_controller),
             Operation::BCS => op_impls::bcs(self, memory_controller),
             Operation::BEQ => op_impls::beq(self, memory_controller),
@@ -209,6 +226,8 @@ impl CPU {
             Operation::RTI => op_impls::rti(self, memory_controller),
             Operation::SEI => op_impls::sei(self),
             Operation::SEP => op_impls::sep(self, memory_controller),
+            Operation::STX(address_mode) => op_impls::stx(self, memory_controller, &address_mode),
+            Operation::STY(address_mode) => op_impls::sty(self, memory_controller, &address_mode),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
             Operation::TAX => op_impls::tax(self),
             Operation::TAY => op_impls::tay(self),
@@ -252,10 +271,9 @@ impl CPU {
         bank: u8,
         address: u16,
         word: u16,
-    ) -> bool {
+    ) {
         if self.processing_data.write_count == 0 {
             self.write_byte(memory_controller, bank, address, split_bytes(word).0);
-            return false;
         } else {
             self.write_byte(
                 memory_controller,
@@ -263,7 +281,6 @@ impl CPU {
                 address.wrapping_add(1),
                 split_bytes(word).1,
             );
-            return true;
         }
     }
     fn read_byte(
@@ -276,36 +293,83 @@ impl CPU {
         self.processing_data.read_count += 1;
         memory_controller.cpu_bus_read()
     }
+    fn cycle_address_loading(
+        &mut self,
+        address_mode: &AddressMode,
+        memory_controller: &mut MemoryController,
+    ) {
+        self.load_one_arg(memory_controller);
+        let arg_count: u8 = get_op_size(address_mode) - 1;
+        if (self.processing_data.args.len() as u8) < (arg_count) {
+            return;
+        }
+        self.processing_data.read_count = 0;
+        let args = &self.processing_data.args;
+        match address_mode {
+            AddressMode::Absolute => {
+                self.processing_data.address =
+                    Some((self.data_bank, combine_bytes(args[1], args[0])))
+            }
+            AddressMode::Accumulator => {
+                self.processing_data.address_error = true;
+                eprint!("Should not try to resolve address for Accumulator addressing");
+            },
+            AddressMode::Immediate => {
+                self.processing_data.address_error = true;
+                eprint!("Should not try to resolve address for Immediate addressing");
+            },
+
+            _ => {
+                eprintln!("Unsupported AddressMode::{:?}", address_mode);
+                self.processing_data.address_error = true;
+            }
+        }
+    }
     fn cycle_operand_loading(
         &mut self,
         address_mode: &AddressMode,
         memory_controller: &mut MemoryController,
         is8bit: bool,
     ) {
-        self.load_one_arg(memory_controller);
-        let mut arg_count = get_op_size(address_mode) - 1;
-        if is8bit && matches!(address_mode, AddressMode::Immediate) {
-            arg_count -= 1;
-        }
-        if (self.processing_data.args.len() as u16) < (arg_count) {
-            return ();
-        }
-        self.processing_data.operand = Some(self.build_operand_from_args(address_mode, is8bit));
-    }
-    fn build_operand_from_args(&mut self, address_mode: &AddressMode, is8bit: bool) -> u16 {
-        let args = &self.processing_data.args;
         match address_mode {
-            AddressMode::Absolute => combine_bytes(args[1], args[0]),
+            AddressMode::Absolute => match self.processing_data.address {
+                None => self.cycle_address_loading(address_mode, memory_controller),
+                Some(address) => {
+                    let byte = self.read_byte(memory_controller, address.0, address.1);
+                    if is8bit {
+                        self.processing_data.operand = Some(byte as u16);
+                        self.processing_data.read_count = 0;
+                    } else {
+                        if self.processing_data.read_count == 0 {
+                            self.processing_data.args.push(byte);
+                        } else {
+                            self.processing_data.operand =
+                                Some(combine_bytes(byte, self.processing_data.args[2]));
+                            self.processing_data.read_count = 0;
+                        }
+                    }
+                }
+            },
             AddressMode::Immediate => {
-                let low_byte = args[0];
-                let high_byte = if is8bit { 0x0000 } else { args[1] };
-                combine_bytes(high_byte, low_byte)
+                self.load_one_arg(memory_controller);
+                if is8bit {
+                    self.processing_data.operand =
+                        Some(combine_bytes(0, self.processing_data.args[0]));
+                } else {
+                    if self.processing_data.read_count == 1 {
+                        self.load_one_arg(memory_controller);
+                    } else {
+                        self.processing_data.operand = Some(combine_bytes(
+                            self.processing_data.args[1],
+                            self.processing_data.args[0],
+                        ));
+                    }
+                }
             }
 
             _ => {
                 eprintln!("Unsupported AddressMode::{:?}", address_mode);
                 self.processing_data.address_error = true;
-                0x0000
             }
         }
     }
@@ -429,7 +493,7 @@ impl CPU {
         address_mode: &AddressMode,
         is8bit: bool,
     ) {
-        let mut op_size = ops::get_op_size(address_mode);
+        let mut op_size = ops::get_op_size(address_mode) as u16;
         if is8bit && matches!(address_mode, AddressMode::Immediate) {
             op_size -= 1;
         }

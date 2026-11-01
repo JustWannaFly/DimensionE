@@ -154,7 +154,7 @@ pub enum AddressMode {
     StackRelative,
     StackRelativeIndirectY,
 }
-pub fn get_op_size(address_mode: &AddressMode) -> u16 {
+pub fn get_op_size(address_mode: &AddressMode) -> u8 {
     match address_mode {
         Absolute => 3,
         AbsoluteIndirect => 3,
