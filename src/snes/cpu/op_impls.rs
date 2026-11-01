@@ -676,6 +676,145 @@ mod tests {
         assert!(check_bits_set(cpu.processor_status, OVERFLOW_MASK));
     }
     #[test]
+    fn bcc() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.processor_status = !CARRY_MASK;
+        memory_controller.write(0x00, 0x0000, 0x90);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BCC);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 4);
+        assert_eq!(cpu.emulation_flag, true);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn bcs() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = CARRY_MASK;
+        memory_controller.write(0x00, 0x0000, 0xB0);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BCS);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn beq() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = !ZERO_MASK;
+        memory_controller.write(0x00, 0x0000, 0xF0);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BEQ);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 2);
+        assert_eq!(cpu.program_counter, 0x0002);
+    }
+    #[test]
+    fn bmi() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = NEGATIVE_MASK;
+        memory_controller.write(0x00, 0x0000, 0x30);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BMI);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn bne() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = !ZERO_MASK;
+        memory_controller.write(0x00, 0x0000, 0xD0);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BNE);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn bpl() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = !NEGATIVE_MASK;
+        memory_controller.write(0x00, 0x0000, 0x10);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BPL);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn bra() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        memory_controller.write(0x00, 0x0000, 0x80);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BRA);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
     fn brk() {
         let bank = 0x12_u8;
         let address = 0x3456_u16;
@@ -732,6 +871,46 @@ mod tests {
         assert_matches!(cpu.processing_data.op, Operation::BRL);
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.processing_data.op_cycles, 4);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn bvc() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = !OVERFLOW_MASK;
+        memory_controller.write(0x00, 0x0000, 0x50);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BVC);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.program_counter, 0xFFFF);
+    }
+    #[test]
+    fn bvs() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = OVERFLOW_MASK;
+        memory_controller.write(0x00, 0x0000, 0x70);
+        memory_controller.write(0x00, 0x0001, 0xFD);
+        memory_controller.write(0x00, 0x0002, 0xFF);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::BVS);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 3);
         assert_eq!(cpu.program_counter, 0xFFFF);
     }
     #[test]
@@ -1143,6 +1322,27 @@ mod tests {
         assert_matches!(cpu.processing_data.op, Operation::REP);
         assert_eq!(0b1011_1010, cpu.processor_status);
         assert_eq!(cpu.processing_data.op_cycles, 3);
+    }
+    #[test]
+    fn rti() {
+        let mut cpu = CPU::new();
+        let mut memory_controller = MemoryController::new();
+        cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        memory_controller.write(0x00, 0x0000, 0x40);
+
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
+
+        assert_matches!(cpu.processing_data.op, Operation::RTI);
+        assert_matches!(cpu.processing_state, LoadingOp);
+        assert_eq!(cpu.processing_data.op_cycles, 7);
+        assert_eq!(cpu.program_counter, 0x0000);
     }
     #[test]
     fn sei() {
