@@ -991,11 +991,8 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset,
-        snes::cpu::{
-            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
-            ProcessingState::LoadingOp,
-            ops::{AddressMode::Immediate, Operation},
+        bytes::check_bits_unset, snes::cpu::{
+            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ProcessingState::LoadingOp, ops::{AddressMode::{Absolute, Immediate}, Operation},
         },
     };
 
@@ -1014,19 +1011,23 @@ mod tests {
         cpu.emulation_flag = false;
         cpu.processor_status = CARRY_MASK;
         cpu.accumulator = 0x1234;
-        memory_controller.write(0x00, 0x0000, 0x69); // ADC(Immediate)
-        memory_controller.write(0x00, 0x0001, 0xFF);
-        memory_controller.write(0x00, 0x0002, 0xFF);
-        let expected_sum = 0x1234_u16.wrapping_add(0xFFFF).wrapping_add(1);
+        memory_controller.write(0x00, 0x0000, 0x6D);
+        memory_controller.write(0x00, 0x0001, 0x03);
+        memory_controller.write(0x00, 0x0002, 0x00);
+        memory_controller.write(0x00, 0x0003, 0xFE);
+        memory_controller.write(0x00, 0x0004, 0xFF);
+        let expected_sum = 0x1234_u16.wrapping_add(0xFFFE).wrapping_add(1);
 
-        // Immediate Mode 16 bit = 3 cycles
+        // Absolute Mode 16 bit = 5 cycles
+        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
         cpu.process_cycle(&mut memory_controller);
 
-        assert_matches!(cpu.processing_data.op, Operation::ADC(Immediate));
+        assert_matches!(cpu.processing_data.op, Operation::ADC(Absolute));
         assert_matches!(cpu.processing_state, LoadingOp);
-        assert_eq!(cpu.processing_data.op_cycles, 3);
+        assert_eq!(cpu.processing_data.op_cycles, 5);
         assert_eq!(expected_sum, cpu.accumulator);
         assert!(check_bits_set(cpu.processor_status, OVERFLOW_MASK));
     }

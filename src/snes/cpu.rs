@@ -313,11 +313,11 @@ impl CPU {
             AddressMode::Accumulator => {
                 self.processing_data.address_error = true;
                 eprint!("Should not try to resolve address for Accumulator addressing");
-            },
+            }
             AddressMode::Immediate => {
                 self.processing_data.address_error = true;
                 eprint!("Should not try to resolve address for Immediate addressing");
-            },
+            }
 
             _ => {
                 eprintln!("Unsupported AddressMode::{:?}", address_mode);
@@ -332,24 +332,13 @@ impl CPU {
         is8bit: bool,
     ) {
         match address_mode {
-            AddressMode::Absolute => match self.processing_data.address {
-                None => self.cycle_address_loading(address_mode, memory_controller),
-                Some(address) => {
-                    let byte = self.read_byte(memory_controller, address.0, address.1);
-                    if is8bit {
-                        self.processing_data.operand = Some(byte as u16);
-                        self.processing_data.read_count = 0;
-                    } else {
-                        if self.processing_data.read_count == 0 {
-                            self.processing_data.args.push(byte);
-                        } else {
-                            self.processing_data.operand =
-                                Some(combine_bytes(byte, self.processing_data.args[2]));
-                            self.processing_data.read_count = 0;
-                        }
-                    }
+            AddressMode::Accumulator => {
+                if is8bit {
+                    self.processing_data.operand = Some(self.accumulator & 0xFF)
+                } else {
+                    self.processing_data.operand = Some(self.accumulator)
                 }
-            },
+            }
             AddressMode::Immediate => {
                 self.load_one_arg(memory_controller);
                 if is8bit {
@@ -366,11 +355,28 @@ impl CPU {
                     }
                 }
             }
-
-            _ => {
-                eprintln!("Unsupported AddressMode::{:?}", address_mode);
-                self.processing_data.address_error = true;
-            }
+            _ => match self.processing_data.address {
+                None => self.cycle_address_loading(address_mode, memory_controller),
+                Some(address) => {
+                    let byte = self.read_byte(
+                        memory_controller,
+                        address.0,
+                        (address.1).wrapping_add(self.processing_data.read_count as u16),
+                    );
+                    if is8bit {
+                        self.processing_data.operand = Some(byte as u16);
+                        self.processing_data.read_count = 0;
+                    } else {
+                        if self.processing_data.read_count == 1 {
+                            self.processing_data.args.push(byte);
+                        } else {
+                            self.processing_data.operand =
+                                Some(combine_bytes(byte, self.processing_data.args[2]));
+                            self.processing_data.read_count = 0;
+                        }
+                    }
+                }
+            },
         }
     }
     fn load_one_arg(&mut self, memory_controller: &mut MemoryController) {
