@@ -7,7 +7,7 @@ use crate::{
             ProcessingState::LoadingOp,
             ZERO_MASK,
             op_impls::helpers::{branch_if_clear, branch_if_set, branch_near_helper},
-            ops::AddressMode,
+            ops::AddressMode::{self, Absolute, AbsoluteIndirectX},
         },
         memory::MemoryController,
     },
@@ -284,6 +284,20 @@ pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if helper_completed {
         cpu.update_processor_status(None, None, Some(true), Some(false), None, None, None, None);
     }
+}
+/// Jump to Subroutine
+pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    if let None = cpu.processing_data.address {
+        cpu.cycle_address_loading(address_mode, memory_controller);
+        return;
+    }
+    if cpu.processing_data.write_count < 2 {
+        let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(3));
+        cpu.cycle_push_stack(memory_controller, &vec![pc_bytes.0, pc_bytes.1]);
+        return;
+    }
+    cpu.program_counter = cpu.processing_data.address.unwrap().1;
+    cpu.processing_state = LoadingOp;
 }
 /// Load Accumulator
 pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
@@ -991,8 +1005,14 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset, snes::cpu::{
-            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ProcessingState::LoadingOp, ops::{AddressMode::{Absolute, Immediate}, Operation},
+        bytes::check_bits_unset,
+        snes::cpu::{
+            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
+            ProcessingState::LoadingOp,
+            ops::{
+                AddressMode::{Absolute, Immediate},
+                Operation,
+            },
         },
     };
 

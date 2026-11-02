@@ -208,6 +208,7 @@ impl CPU {
             Operation::CLI => op_impls::cli(self),
             Operation::CLV => op_impls::clv(self),
             Operation::COP => op_impls::cop(self, memory_controller),
+            Operation::JSR(address_mode) => op_impls::jsr(self, memory_controller, &address_mode),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
             Operation::PHA => op_impls::pha(self, memory_controller),
             Operation::PHB => op_impls::phb(self, memory_controller),
@@ -298,27 +299,62 @@ impl CPU {
         address_mode: &AddressMode,
         memory_controller: &mut MemoryController,
     ) {
-        self.load_one_arg(memory_controller);
         let arg_count: u8 = get_op_size(address_mode) - 1;
         if (self.processing_data.args.len() as u8) < (arg_count) {
-            return;
+            self.load_one_arg(memory_controller);
+            if (self.processing_data.args.len() as u8) < (arg_count) {
+                return;
+            }
         }
-        self.processing_data.read_count = 0;
         let args = &self.processing_data.args;
         match address_mode {
             AddressMode::Absolute => {
                 self.processing_data.address =
                     Some((self.data_bank, combine_bytes(args[1], args[0])))
+                    self.processing_data.read_count = 0;
             }
-            AddressMode::Accumulator => {
-                self.processing_data.address_error = true;
-                eprint!("Should not try to resolve address for Accumulator addressing");
+            AddressMode::AbsoluteIndirectX => match self.processing_data.args.len() {
+                2 => {
+                    let byte = self.read_byte(
+                        memory_controller,
+                        self.program_bank,
+                        combine_bytes(self.processing_data.args[1], self.processing_data.args[0]),
+                    );
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let byte = self.read_byte(
+                        memory_controller,
+                        self.program_bank,
+                        combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
+                            .wrapping_add(1),
+                    );
+                    self.processing_data.args.push(byte);
+                }
+                _ => {
+                    let resolved_addr = self.x.wrapping_add(combine_bytes(
+                        self.processing_data.args[3],
+                        self.processing_data.args[2],
+                    ));
+                    self.processing_data.address = Some((self.program_bank, resolved_addr));
+                    self.processing_data.read_count = 0;
+                }
+            },
+            AddressMode::DirectPage => {
+                let required_delay: u8 = if split_bytes(self.direct_page).0 == 0 {
+                    0
+                } else {
+                    1
+                };
+                if self.processing_data.delay_count < required_delay {
+                    self.processing_data.delay_count += 1;
+                    return;
+                }
+                self.processing_data.delay_count = 0;
+                self.processing_data.address = Some((0, self.direct_page.wrapping_add(self.processing_data.args[0] as u16)));
             }
-            AddressMode::Immediate => {
-                self.processing_data.address_error = true;
-                eprint!("Should not try to resolve address for Immediate addressing");
-            }
-
+            AddressMode::Accumulator => panic!("Should not try to resolve address for Accumulator addressing"),
+            AddressMode::Immediate => panic!("Should not try to resolve address for Immediate addressing"),
             _ => {
                 eprintln!("Unsupported AddressMode::{:?}", address_mode);
                 self.processing_data.address_error = true;
