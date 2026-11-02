@@ -227,6 +227,8 @@ impl CPU {
             Operation::PLY => op_impls::ply(self, memory_controller),
             Operation::REP => op_impls::rep(self, memory_controller),
             Operation::RTI => op_impls::rti(self, memory_controller),
+            Operation::SEC => op_impls::sec(self),
+            Operation::SED => op_impls::sed(self),
             Operation::SEI => op_impls::sei(self),
             Operation::SEP => op_impls::sep(self, memory_controller),
             Operation::STA(address_mode) => op_impls::sta(self, memory_controller, &address_mode),
@@ -343,6 +345,16 @@ impl CPU {
                     self.processing_data.read_count = 0;
                 }
             },
+            AddressMode::AbsoluteLong => {
+                self.processing_data.address =
+                    Some((args[2], combine_bytes(args[1], args[0])));
+                self.processing_data.read_count = 0;
+            }
+            AddressMode::AbsoluteLongX => {
+                self.processing_data.address =
+                    Some((args[2], combine_bytes(args[1], args[0]).wrapping_add(self.x)));
+                self.processing_data.read_count = 0;
+            }
             AddressMode::DirectPage => {
                 let required_delay: u8 = if split_bytes(self.direct_page).0 == 0 {
                     0

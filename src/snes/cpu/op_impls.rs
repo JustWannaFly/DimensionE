@@ -697,6 +697,16 @@ pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Set Interrupt Disable Flag
+pub fn sec(cpu: &mut CPU) {
+    cpu.update_processor_status(Some(true), None, None, None, None, None, None, None);
+    cpu.advance_program_counter(1);
+}
+/// Set Interrupt Disable Flag
+pub fn sed(cpu: &mut CPU) {
+    cpu.update_processor_status(None, None, None, Some(true), None, None, None, None);
+    cpu.advance_program_counter(1);
+}
+/// Set Interrupt Disable Flag
 pub fn sei(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, Some(true), None, None, None, None, None);
     cpu.advance_program_counter(1);
@@ -1075,9 +1085,13 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset, snes::cpu::{
-            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK, ProcessingState::LoadingOp, ops::{
-                AddressMode::{Absolute, Accumulator, Immediate}, Operation,
+        bytes::check_bits_unset,
+        snes::cpu::{
+            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
+            ProcessingState::LoadingOp,
+            ops::{
+                AddressMode::{Absolute, Accumulator, Immediate},
+                Operation,
             },
         },
     };
@@ -1117,7 +1131,7 @@ mod tests {
         assert_eq!(expected_sum, cpu.accumulator);
         assert!(check_bits_set(cpu.processor_status, OVERFLOW_MASK));
     }
-        #[test]
+    #[test]
     fn asl() {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
