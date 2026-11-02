@@ -210,6 +210,8 @@ impl CPU {
             Operation::COP => op_impls::cop(self, memory_controller),
             Operation::JSR(address_mode) => op_impls::jsr(self, memory_controller, &address_mode),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
+            Operation::LDX(address_mode) => op_impls::ldx(self, memory_controller, &address_mode),
+            Operation::LDY(address_mode) => op_impls::ldy(self, memory_controller, &address_mode),
             Operation::PHA => op_impls::pha(self, memory_controller),
             Operation::PHB => op_impls::phb(self, memory_controller),
             Operation::PHD => op_impls::phd(self, memory_controller),
@@ -227,6 +229,7 @@ impl CPU {
             Operation::RTI => op_impls::rti(self, memory_controller),
             Operation::SEI => op_impls::sei(self),
             Operation::SEP => op_impls::sep(self, memory_controller),
+            Operation::STA(address_mode) => op_impls::sta(self, memory_controller, &address_mode),
             Operation::STX(address_mode) => op_impls::stx(self, memory_controller, &address_mode),
             Operation::STY(address_mode) => op_impls::sty(self, memory_controller, &address_mode),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
@@ -310,8 +313,8 @@ impl CPU {
         match address_mode {
             AddressMode::Absolute => {
                 self.processing_data.address =
-                    Some((self.data_bank, combine_bytes(args[1], args[0])))
-                    self.processing_data.read_count = 0;
+                    Some((self.data_bank, combine_bytes(args[1], args[0])));
+                self.processing_data.read_count = 0;
             }
             AddressMode::AbsoluteIndirectX => match self.processing_data.args.len() {
                 2 => {
@@ -351,10 +354,18 @@ impl CPU {
                     return;
                 }
                 self.processing_data.delay_count = 0;
-                self.processing_data.address = Some((0, self.direct_page.wrapping_add(self.processing_data.args[0] as u16)));
+                self.processing_data.address = Some((
+                    0,
+                    self.direct_page
+                        .wrapping_add(self.processing_data.args[0] as u16),
+                ));
             }
-            AddressMode::Accumulator => panic!("Should not try to resolve address for Accumulator addressing"),
-            AddressMode::Immediate => panic!("Should not try to resolve address for Immediate addressing"),
+            AddressMode::Accumulator => {
+                panic!("Should not try to resolve address for Accumulator addressing")
+            }
+            AddressMode::Immediate => {
+                panic!("Should not try to resolve address for Immediate addressing")
+            }
             _ => {
                 eprintln!("Unsupported AddressMode::{:?}", address_mode);
                 self.processing_data.address_error = true;
@@ -380,15 +391,11 @@ impl CPU {
                 if is8bit {
                     self.processing_data.operand =
                         Some(combine_bytes(0, self.processing_data.args[0]));
-                } else {
-                    if self.processing_data.read_count == 1 {
-                        self.load_one_arg(memory_controller);
-                    } else {
-                        self.processing_data.operand = Some(combine_bytes(
-                            self.processing_data.args[1],
-                            self.processing_data.args[0],
-                        ));
-                    }
+                } else if self.processing_data.read_count == 2 {
+                    self.processing_data.operand = Some(combine_bytes(
+                        self.processing_data.args[1],
+                        self.processing_data.args[0],
+                    ));
                 }
             }
             _ => match self.processing_data.address {
