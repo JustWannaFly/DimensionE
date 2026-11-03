@@ -191,10 +191,12 @@ impl CPU {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
             Operation::ADC(address_mode) => op_impls::adc(self, memory_controller, &address_mode),
+            Operation::AND(address_mode) => op_impls::and(self, memory_controller, &address_mode),
             Operation::ASL(address_mode) => op_impls::asl(self, memory_controller, &address_mode),
             Operation::BCC => op_impls::bcc(self, memory_controller),
             Operation::BCS => op_impls::bcs(self, memory_controller),
             Operation::BEQ => op_impls::beq(self, memory_controller),
+            Operation::BIT(address_mode) => op_impls::bit(self, memory_controller, &address_mode),
             Operation::BMI => op_impls::bmi(self, memory_controller),
             Operation::BNE => op_impls::bne(self, memory_controller),
             Operation::BPL => op_impls::bpl(self, memory_controller),
@@ -207,6 +209,9 @@ impl CPU {
             Operation::CLD => op_impls::cld(self),
             Operation::CLI => op_impls::cli(self),
             Operation::CLV => op_impls::clv(self),
+            Operation::CMP(address_mode) => op_impls::cmp(self, memory_controller, &address_mode),
+            Operation::CPX(address_mode) => op_impls::cpx(self, memory_controller, &address_mode),
+            Operation::CPY(address_mode) => op_impls::cpy(self, memory_controller, &address_mode),
             Operation::COP => op_impls::cop(self, memory_controller),
             Operation::JSR(address_mode) => op_impls::jsr(self, memory_controller, &address_mode),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),

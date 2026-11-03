@@ -7,7 +7,7 @@ use crate::{
             ProcessingState::LoadingOp,
             ZERO_MASK,
             op_impls::helpers::{branch_if_clear, branch_if_set, branch_near_helper},
-            ops::AddressMode::{self, Absolute, AbsoluteIndirectX},
+            ops::AddressMode::{self, Absolute, AbsoluteIndirectX, Immediate},
         },
         memory::MemoryController,
     },
@@ -168,6 +168,35 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
+/// AND
+pub fn and(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let high_bit_mask;
+        if is8bit {
+            high_bit_mask = 0x80_u16;
+        } else {
+            high_bit_mask = 0x8000;
+        }
+        cpu.accumulator = cpu.accumulator & operand;
+        let is_negative = cpu.accumulator & high_bit_mask != 0;
+        let is_zero = cpu.accumulator == 0;
+        cpu.update_processor_status(
+            None,
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
 /// Arithmetic Shift Left
 pub fn asl(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
@@ -212,6 +241,43 @@ pub fn bcs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
 /// Branch Zero Set
 pub fn beq(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     branch_if_set(cpu, memory_controller, ZERO_MASK);
+}
+/// BIT
+pub fn bit(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let high_bit_mask;
+        let second_bit_mask;
+        if is8bit {
+            high_bit_mask = 0x80_u16;
+            second_bit_mask = 0x40_u16;
+        } else {
+            high_bit_mask = 0x8000;
+            second_bit_mask = 0x4000;
+        }
+        let result = cpu.accumulator & operand;
+        let mut is_negative = Some(result & high_bit_mask != 0);
+        let mut is_overflow = Some(result & second_bit_mask != 0);
+        let is_zero = Some(result == 0);
+        if matches!(address_mode, Immediate) {
+            is_negative = None;
+            is_overflow = None;
+        }
+        cpu.update_processor_status(
+            None,
+            is_zero,
+            None,
+            None,
+            None,
+            None,
+            is_overflow,
+            is_negative,
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
 }
 /// Branch Negative Set
 pub fn bmi(cpu: &mut CPU, memory_controller: &mut MemoryController) {
@@ -284,6 +350,108 @@ pub fn cli(cpu: &mut CPU) {
 pub fn clv(cpu: &mut CPU) {
     cpu.update_processor_status(None, None, None, None, None, None, Some(false), None);
     cpu.advance_program_counter(1);
+}
+/// Compare with Accumulator
+pub fn cmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let is_carry;
+        let is_zero;
+        let is_negative;
+        if is8bit {
+            let result = (cpu.accumulator as u8).wrapping_sub(operand as u8);
+            is_negative = result & 0x80 != 0;
+            is_zero = result == 0;
+            is_carry = cpu.accumulator as u8 >= operand as u8;
+        } else {
+            let result = cpu.accumulator.wrapping_sub(operand);
+            is_negative = result & 0x8000 != 0;
+            is_zero = result == 0;
+            is_carry = cpu.accumulator >= operand;
+        }
+        cpu.update_processor_status(
+            Some(is_carry),
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
+/// Compare with X
+pub fn cpx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let is_carry;
+        let is_zero;
+        let is_negative;
+        if is8bit {
+            let result = (cpu.x as u8).wrapping_sub(operand as u8);
+            is_negative = result & 0x80 != 0;
+            is_zero = result == 0;
+            is_carry = cpu.x as u8 >= operand as u8;
+        } else {
+            let result = cpu.x.wrapping_sub(operand);
+            is_negative = result & 0x8000 != 0;
+            is_zero = result == 0;
+            is_carry = cpu.x >= operand;
+        }
+        cpu.update_processor_status(
+            Some(is_carry),
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
+/// Compare with Y
+pub fn cpy(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let is_carry;
+        let is_zero;
+        let is_negative;
+        if is8bit {
+            let result = (cpu.y as u8).wrapping_sub(operand as u8);
+            is_negative = result & 0x80 != 0;
+            is_zero = result == 0;
+            is_carry = cpu.y as u8 >= operand as u8;
+        } else {
+            let result = cpu.y.wrapping_sub(operand);
+            is_negative = result & 0x8000 != 0;
+            is_zero = result == 0;
+            is_carry = cpu.y >= operand;
+        }
+        cpu.update_processor_status(
+            Some(is_carry),
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
 }
 /// Co-Processor Interrupt
 pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
