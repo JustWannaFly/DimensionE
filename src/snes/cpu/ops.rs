@@ -55,8 +55,8 @@ pub enum Operation {
     INC(AddressMode), // Increment
     INX,
     INY,              // Increment Index Registers
+    JML(AddressMode), // Jump Long
     JMP(AddressMode), // Jump
-    JML(AddressMode), // Jump
     JSR(AddressMode), // Jump to Subroutine
     JSL,              // Jump to Subroutine
     LDA(AddressMode), // Load Accumulator from Memory

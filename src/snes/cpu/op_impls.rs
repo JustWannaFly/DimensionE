@@ -562,6 +562,38 @@ pub fn dey(cpu: &mut CPU) {
     );
     cpu.advance_program_counter(1);
 }
+/// Exclusive Or
+pub fn eor(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let high_bit_mask;
+        let result;
+        if is8bit {
+            high_bit_mask = 0x80_u16;
+            result = (operand as u8 ^ cpu.accumulator as u8) as u16;
+        } else {
+            high_bit_mask = 0x8000;
+            result = operand ^ cpu.accumulator;
+        }
+        cpu.accumulator = result;
+        let is_negative = result & high_bit_mask != 0;
+        let is_zero = result == 0;
+        cpu.update_processor_status(
+            None,
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
 /// Increment
 pub fn inc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
@@ -677,6 +709,27 @@ pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
     cpu.program_counter = cpu.processing_data.address.unwrap().1;
     cpu.processing_state = LoadingOp;
+}
+/// Jump Long
+pub fn jml(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    if let None = cpu.processing_data.address {
+        cpu.cycle_address_loading(address_mode, memory_controller);
+    }
+    if let Some(address) = cpu.processing_data.address {
+        cpu.program_bank = address.0;
+        cpu.program_counter = address.1;
+        cpu.processing_state = LoadingOp;
+    }
+}
+/// Jump
+pub fn jmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    if let None = cpu.processing_data.address {
+        cpu.cycle_address_loading(address_mode, memory_controller);
+    }
+    if let Some(address) = cpu.processing_data.address {
+        cpu.program_counter = address.1;
+        cpu.processing_state = LoadingOp;
+    }
 }
 /// Load Accumulator
 pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
