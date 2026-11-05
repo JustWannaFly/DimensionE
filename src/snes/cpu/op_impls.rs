@@ -696,20 +696,6 @@ pub fn iny(cpu: &mut CPU) {
     );
     cpu.advance_program_counter(1);
 }
-/// Jump to Subroutine
-pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
-    if let None = cpu.processing_data.address {
-        cpu.cycle_address_loading(address_mode, memory_controller);
-        return;
-    }
-    if cpu.processing_data.write_count < 2 {
-        let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(3));
-        cpu.cycle_push_stack(memory_controller, &vec![pc_bytes.0, pc_bytes.1]);
-        return;
-    }
-    cpu.program_counter = cpu.processing_data.address.unwrap().1;
-    cpu.processing_state = LoadingOp;
-}
 /// Jump Long
 pub fn jml(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
     if let None = cpu.processing_data.address {
@@ -730,6 +716,34 @@ pub fn jmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.program_counter = address.1;
         cpu.processing_state = LoadingOp;
     }
+}
+/// Jump to Subroutine Long
+pub fn jsl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    if let None = cpu.processing_data.address {
+        cpu.cycle_address_loading(&AddressMode::AbsoluteLong, memory_controller);
+        return;
+    }
+    if cpu.processing_data.write_count < 3 {
+        let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(4));
+        cpu.cycle_push_stack(memory_controller, &vec![cpu.program_bank, pc_bytes.0, pc_bytes.1]);
+        return;
+    }
+    cpu.program_counter = cpu.processing_data.address.unwrap().1;
+    cpu.processing_state = LoadingOp;
+}
+/// Jump to Subroutine
+pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    if let None = cpu.processing_data.address {
+        cpu.cycle_address_loading(address_mode, memory_controller);
+        return;
+    }
+    if cpu.processing_data.write_count < 2 {
+        let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(3));
+        cpu.cycle_push_stack(memory_controller, &vec![pc_bytes.0, pc_bytes.1]);
+        return;
+    }
+    cpu.program_counter = cpu.processing_data.address.unwrap().1;
+    cpu.processing_state = LoadingOp;
 }
 /// Load Accumulator
 pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
@@ -801,6 +815,49 @@ pub fn ldy(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             Some(is_negative),
         );
         cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
+/// Logical Shift Right
+pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let result;
+        if is8bit {
+            result = (operand as u8 >> 1) as u16;
+        } else {
+            result = operand >> 1;
+        }
+        match cpu.processing_data.address {
+            None => {
+                cpu.accumulator = result;
+                cpu.advance_program_counter(1);
+            }
+            Some(address) => {
+                if is8bit {
+                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                } else {
+                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                }
+            }
+        }
+        if is8bit || cpu.processing_data.write_count == 2 {
+            let is_zero = result == 0;
+            let is_carry = operand & 1 != 0;
+            cpu.update_processor_status(
+                Some(is_carry),
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(false),
+            );
+            cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
     }
 }
 /// Push Accumulator

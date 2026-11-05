@@ -222,6 +222,7 @@ impl CPU {
             Operation::INY => op_impls::iny(self),
             Operation::JML(address_mode) => op_impls::jml(self, memory_controller, &address_mode),
             Operation::JMP(address_mode) => op_impls::jmp(self, memory_controller, &address_mode),
+            Operation::JSL => op_impls::jsl(self, memory_controller),
             Operation::JSR(address_mode) => op_impls::jsr(self, memory_controller, &address_mode),
             Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
             Operation::LDX(address_mode) => op_impls::ldx(self, memory_controller, &address_mode),
