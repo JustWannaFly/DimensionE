@@ -7,7 +7,7 @@ use crate::{
             ProcessingState::LoadingOp,
             ZERO_MASK,
             op_impls::helpers::{branch_if_clear, branch_if_set, branch_near_helper},
-            ops::AddressMode::{self, Absolute, AbsoluteIndirectX, Immediate},
+            ops::AddressMode::{self, Immediate},
         },
         memory::MemoryController,
     },
@@ -459,6 +459,210 @@ pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     if helper_completed {
         cpu.update_processor_status(None, None, Some(true), Some(false), None, None, None, None);
     }
+}
+/// Decrement
+pub fn dec(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let high_bit_mask;
+        let result;
+        if is8bit {
+            high_bit_mask = 0x80_u16;
+            result = (operand as u8).wrapping_sub(1) as u16;
+        } else {
+            high_bit_mask = 0x8000;
+            result = operand.wrapping_sub(1);
+        }
+        match cpu.processing_data.address {
+            None => {
+                cpu.accumulator = result;
+                cpu.advance_program_counter(1);
+            }
+            Some(address) => {
+                if is8bit {
+                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                } else {
+                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                }
+            }
+        }
+        if is8bit || cpu.processing_data.write_count == 2 {
+            let is_negative = result & high_bit_mask != 0;
+            let is_zero = result == 0;
+            cpu.update_processor_status(
+                None,
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(is_negative),
+            );
+            cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
+    }
+}
+/// Decrement X
+pub fn dex(cpu: &mut CPU) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let high_bit_mask;
+    let result;
+    if is8bit {
+        high_bit_mask = 0x80_u16;
+        result = (cpu.x as u8).wrapping_sub(1) as u16;
+    } else {
+        high_bit_mask = 0x8000;
+        result = cpu.x.wrapping_sub(1);
+    }
+    cpu.x = result;
+
+    let is_negative = result & high_bit_mask != 0;
+    let is_zero = result == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Decrement Y
+pub fn dey(cpu: &mut CPU) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let high_bit_mask;
+    let result;
+    if is8bit {
+        high_bit_mask = 0x80_u16;
+        result = (cpu.y as u8).wrapping_sub(1) as u16;
+    } else {
+        high_bit_mask = 0x8000;
+        result = cpu.y.wrapping_sub(1);
+    }
+    cpu.y = result;
+
+    let is_negative = result & high_bit_mask != 0;
+    let is_zero = result == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Increment
+pub fn inc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let high_bit_mask;
+        let result;
+        if is8bit {
+            high_bit_mask = 0x80_u16;
+            result = (operand as u8).wrapping_add(1) as u16;
+        } else {
+            high_bit_mask = 0x8000;
+            result = operand.wrapping_add(1);
+        }
+        match cpu.processing_data.address {
+            None => {
+                cpu.accumulator = result;
+                cpu.advance_program_counter(1);
+            }
+            Some(address) => {
+                if is8bit {
+                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                } else {
+                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                }
+            }
+        }
+        if is8bit || cpu.processing_data.write_count == 2 {
+            let is_negative = result & high_bit_mask != 0;
+            let is_zero = result == 0;
+            cpu.update_processor_status(
+                None,
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(is_negative),
+            );
+            cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
+    }
+}
+/// Increment X
+pub fn inx(cpu: &mut CPU) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let high_bit_mask;
+    let result;
+    if is8bit {
+        high_bit_mask = 0x80_u16;
+        result = (cpu.x as u8).wrapping_add(1) as u16;
+    } else {
+        high_bit_mask = 0x8000;
+        result = cpu.x.wrapping_add(1);
+    }
+    cpu.x = result;
+
+    let is_negative = result & high_bit_mask != 0;
+    let is_zero = result == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
+}
+/// Increment Y
+pub fn iny(cpu: &mut CPU) {
+    let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
+    let high_bit_mask;
+    let result;
+    if is8bit {
+        high_bit_mask = 0x80_u16;
+        result = (cpu.y as u8).wrapping_add(1) as u16;
+    } else {
+        high_bit_mask = 0x8000;
+        result = cpu.y.wrapping_add(1);
+    }
+    cpu.y = result;
+
+    let is_negative = result & high_bit_mask != 0;
+    let is_zero = result == 0;
+    cpu.update_processor_status(
+        None,
+        Some(is_zero),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(is_negative),
+    );
+    cpu.advance_program_counter(1);
 }
 /// Jump to Subroutine
 pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
@@ -1258,7 +1462,7 @@ mod tests {
             CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
             ProcessingState::LoadingOp,
             ops::{
-                AddressMode::{Absolute, Accumulator, Immediate},
+                AddressMode::{Absolute, Accumulator},
                 Operation,
             },
         },
