@@ -725,7 +725,10 @@ pub fn jsl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
     if cpu.processing_data.write_count < 3 {
         let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(4));
-        cpu.cycle_push_stack(memory_controller, &vec![cpu.program_bank, pc_bytes.0, pc_bytes.1]);
+        cpu.cycle_push_stack(
+            memory_controller,
+            &vec![cpu.program_bank, pc_bytes.0, pc_bytes.1],
+        );
         return;
     }
     cpu.program_counter = cpu.processing_data.address.unwrap().1;
@@ -857,6 +860,161 @@ pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
                 Some(false),
             );
             cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
+    }
+}
+/// Move Block Next
+pub fn mvn(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    match cpu.processing_data.op_cycles {
+        2..=3 => {
+            cpu.load_one_arg(memory_controller);
+        }
+        4 => {
+            cpu.processing_data.operand =
+                Some(cpu.read_byte(memory_controller, cpu.processing_data.args[1], cpu.x) as u16);
+        }
+        5 => {
+            cpu.data_bank = cpu.processing_data.args[0];
+            cpu.write_byte(
+                memory_controller,
+                cpu.data_bank,
+                cpu.y,
+                cpu.processing_data.operand.unwrap() as u8,
+            );
+        }
+        6 => {
+            cpu.x = cpu.x.wrapping_add(1);
+            cpu.y = cpu.y.wrapping_add(1);
+            cpu.accumulator = cpu.accumulator.wrapping_sub(1);
+        }
+        7 => {
+            if cpu.accumulator == 0xFFFF {
+                cpu.advance_program_counter(3);
+            } else {
+                cpu.processing_state = LoadingOp;
+            }
+        }
+        _ => (),
+    }
+}
+/// Move Block Previous
+pub fn mvp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    match cpu.processing_data.op_cycles {
+        2..=3 => {
+            cpu.load_one_arg(memory_controller);
+        }
+        4 => {
+            cpu.processing_data.operand =
+                Some(cpu.read_byte(memory_controller, cpu.processing_data.args[1], cpu.x) as u16);
+        }
+        5 => {
+            cpu.data_bank = cpu.processing_data.args[0];
+            cpu.write_byte(
+                memory_controller,
+                cpu.data_bank,
+                cpu.y,
+                cpu.processing_data.operand.unwrap() as u8,
+            );
+        }
+        6 => {
+            cpu.x = cpu.x.wrapping_sub(1);
+            cpu.y = cpu.y.wrapping_sub(1);
+            cpu.accumulator = cpu.accumulator.wrapping_sub(1);
+        }
+        7 => {
+            if cpu.accumulator == 0xFFFF {
+                cpu.advance_program_counter(3);
+            } else {
+                cpu.processing_state = LoadingOp;
+            }
+        }
+        _ => (),
+    }
+}
+/// No Operation
+pub fn nop(cpu: &mut CPU) {
+    cpu.advance_program_counter(1);
+}
+/// Or
+pub fn ora(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let high_bit_mask;
+        let result;
+        if is8bit {
+            high_bit_mask = 0x80_u16;
+            result = (operand as u8 | cpu.accumulator as u8) as u16;
+        } else {
+            high_bit_mask = 0x8000;
+            result = operand | cpu.accumulator;
+        }
+        cpu.accumulator = result;
+        let is_negative = result & high_bit_mask != 0;
+        let is_zero = result == 0;
+        cpu.update_processor_status(
+            None,
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+    }
+}
+/// Push Effective Address
+pub fn pea(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    match cpu.processing_data.address {
+        None => {
+            cpu.cycle_address_loading(&AddressMode::Absolute, memory_controller);
+        }
+        Some(address) => {
+            let address_bytes = split_bytes(address.1);
+            let write_complte =
+                cpu.cycle_push_stack(memory_controller, &vec![address_bytes.1, address_bytes.0]);
+            if write_complte {
+                cpu.advance_program_counter(3);
+            }
+        }
+    }
+}
+/// Push Effective Indirect Address
+pub fn pei(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    match cpu.processing_data.address {
+        None => {
+            cpu.cycle_address_loading(&AddressMode::DirectPageIndirect, memory_controller);
+        }
+        Some(address) => match cpu.processing_data.operand {
+            None => {
+                cpu.processing_data.operand =
+                    Some(cpu.read_byte(memory_controller, address.0, address.1) as u16)
+            }
+            Some(operand) => {
+                cpu.stack_push_byte(memory_controller, operand as u8);
+                cpu.advance_program_counter(2);
+            }
+        },
+    }
+}
+/// Push Effective PC Relative Address
+pub fn per(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+    match cpu.processing_data.operand {
+        None => cpu.cycle_operand_loading(&AddressMode::Immediate, memory_controller, false),
+        Some(operand) => {
+            let op_size = 3;
+            let result_addr_bytes = split_bytes(cpu.program_counter.wrapping_add(operand).wrapping_add(op_size));
+            let push_complete = cpu.cycle_push_stack(
+                memory_controller,
+                &vec![result_addr_bytes.1, result_addr_bytes.0],
+            );
+            if push_complete {
+                cpu.advance_program_counter(op_size);
+            }
         }
     }
 }
