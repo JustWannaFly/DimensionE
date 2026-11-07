@@ -329,7 +329,7 @@ impl CPU {
         }
         let args = &self.processing_data.args;
         let invalid_arg_count_error = "Invalid arg count for address mode";
-        // TODO verify all address resolutions. I'm tired and confusing myself as I try to check they're correct.
+        // TODO verify all address resolutions & timings. I'm tired and confusing myself as I try to check they're correct.
         match address_mode {
             AddressMode::Absolute => {
                 self.processing_data.address =
@@ -453,6 +453,7 @@ impl CPU {
                     .direct_page
                     .wrapping_add(self.processing_data.args[0] as u16);
                 self.processing_data.address = Some((0, resolved_address));
+                self.processing_data.read_count = 0;
             }
             AddressMode::DirectPageIndirect => match self.processing_data.args.len() {
                 1 => {
@@ -634,6 +635,7 @@ impl CPU {
                     .wrapping_add(self.direct_page)
                     .wrapping_add(self.processing_data.args[0] as u16);
                 self.processing_data.address = Some((0, resolved_address));
+                self.processing_data.read_count = 0;
             }
             AddressMode::DirectPageY => {
                 if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
@@ -647,12 +649,44 @@ impl CPU {
                     .wrapping_add(self.direct_page)
                     .wrapping_add(self.processing_data.args[0] as u16);
                 self.processing_data.address = Some((0, resolved_address));
+                self.processing_data.read_count = 0;
             }
             AddressMode::Immediate => {
                 panic!("Should not try to resolve address for Immediate addressing")
             }
-            AddressMode::StackRelative => {}
-            AddressMode::StackRelativeIndirectY => {}
+            AddressMode::StackRelative => {
+                let resolved_address = self
+                    .stack_pointer
+                    .wrapping_add(self.processing_data.args[0] as u16);
+                self.processing_data.address = Some((0, resolved_address));
+                self.processing_data.read_count = 0;
+            }
+            AddressMode::StackRelativeIndirectY => match self.processing_data.args.len() {
+                1 => {
+                    let address = self
+                        .stack_pointer
+                        .wrapping_add(self.processing_data.args[0] as u16);
+                    let byte = self.read_byte(memory_controller, 0, address);
+                    self.processing_data.args.push(byte);
+                }
+                2 => {
+                    let address = self
+                        .stack_pointer
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, 0, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let resolved_address = self.y.wrapping_add(combine_bytes(
+                        self.processing_data.args[2],
+                        self.processing_data.args[1],
+                    ));
+                    self.processing_data.address = Some((self.data_bank, resolved_address));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
         }
     }
     fn cycle_operand_loading(
