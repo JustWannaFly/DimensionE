@@ -249,6 +249,8 @@ impl CPU {
             Operation::PLX => op_impls::plx(self, memory_controller),
             Operation::PLY => op_impls::ply(self, memory_controller),
             Operation::REP => op_impls::rep(self, memory_controller),
+            Operation::ROL(address_mode) => op_impls::rol(self, memory_controller, &address_mode),
+            Operation::ROR(address_mode) => op_impls::ror(self, memory_controller, &address_mode),
             Operation::RTI => op_impls::rti(self, memory_controller),
             Operation::SEC => op_impls::sec(self),
             Operation::SED => op_impls::sed(self),

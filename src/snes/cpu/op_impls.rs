@@ -205,29 +205,45 @@ pub fn asl(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
-        let shifted;
+        let result;
         if is8bit {
             high_bit_mask = 0x80_u16;
-            shifted = (operand << 1) & 0xFF;
+            result = (operand << 1) & 0xFF;
         } else {
             high_bit_mask = 0x8000_u16;
-            shifted = operand << 1;
+            result = operand << 1;
         }
-        let is_carry = operand & high_bit_mask != 0;
-        let is_negative = shifted & high_bit_mask != 0;
-        let is_zero = shifted == 0;
-        cpu.accumulator = shifted;
-        cpu.update_processor_status(
-            Some(is_carry),
-            Some(is_zero),
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(is_negative),
-        );
-        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        match cpu.processing_data.address {
+            None => {
+                cpu.accumulator = result;
+            }
+            Some(address) => {
+                if is8bit {
+                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                } else {
+                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                }
+            }
+        }
+        if is8bit
+            || cpu.processing_data.write_count == 2
+            || matches!(cpu.processing_data.address, None)
+        {
+            let is_zero = result == 0;
+            let is_carry = operand & high_bit_mask != 0;
+            let is_negative = result & high_bit_mask != 0;
+            cpu.update_processor_status(
+                Some(is_carry),
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(is_negative),
+            );
+            cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
     }
 }
 /// Branch Carry Clear
@@ -836,7 +852,6 @@ pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         match cpu.processing_data.address {
             None => {
                 cpu.accumulator = result;
-                cpu.advance_program_counter(1);
             }
             Some(address) => {
                 if is8bit {
@@ -846,7 +861,10 @@ pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
                 }
             }
         }
-        if is8bit || cpu.processing_data.write_count == 2 {
+        if is8bit
+            || cpu.processing_data.write_count == 2
+            || matches!(cpu.processing_data.address, None)
+        {
             let is_zero = result == 0;
             let is_carry = operand & 1 != 0;
             cpu.update_processor_status(
@@ -1007,7 +1025,11 @@ pub fn per(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         None => cpu.cycle_operand_loading(&AddressMode::Immediate, memory_controller, false),
         Some(operand) => {
             let op_size = 3;
-            let result_addr_bytes = split_bytes(cpu.program_counter.wrapping_add(operand).wrapping_add(op_size));
+            let result_addr_bytes = split_bytes(
+                cpu.program_counter
+                    .wrapping_add(operand)
+                    .wrapping_add(op_size),
+            );
             let push_complete = cpu.cycle_push_stack(
                 memory_controller,
                 &vec![result_addr_bytes.1, result_addr_bytes.0],
@@ -1301,6 +1323,111 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
             negative,
         );
         cpu.advance_program_counter(2);
+    }
+}
+/// Rotate Left
+pub fn rol(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let mut result;
+        let high_bit_mask;
+        if is8bit {
+            high_bit_mask = 0x0080_u16;
+            result = ((operand as u8) << 1) as u16;
+        } else {
+            result = operand << 1;
+            high_bit_mask = 0x0080;
+        }
+        if check_bits_set(cpu.processor_status, CARRY_MASK) {
+            result += 1;
+        }
+        match cpu.processing_data.address {
+            None => {
+                cpu.accumulator = result;
+            }
+            Some(address) => {
+                if is8bit {
+                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                } else {
+                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                }
+            }
+        }
+        if is8bit
+            || cpu.processing_data.write_count == 2
+            || matches!(cpu.processing_data.address, None)
+        {
+            let is_carry = operand & high_bit_mask != 0;
+            let is_zero = result == 0;
+            let is_negative = result & high_bit_mask != 0;
+            cpu.update_processor_status(
+                Some(is_carry),
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(is_negative),
+            );
+            cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
+    }
+}
+/// Rotate Right
+pub fn ror(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let mut result;
+        let high_bit_mask;
+        if is8bit {
+            high_bit_mask = 0x0080_u16;
+            result = ((operand as u8) >> 1) as u16;
+        } else {
+            result = operand >> 1;
+            high_bit_mask = 0x0080;
+        }
+        
+        if check_bits_set(cpu.processor_status, CARRY_MASK) {
+            result += high_bit_mask;
+        }
+        match cpu.processing_data.address {
+            None => {
+                cpu.accumulator = result;
+            }
+            Some(address) => {
+                if is8bit {
+                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                } else {
+                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                }
+            }
+        }
+        if is8bit
+            || cpu.processing_data.write_count == 2
+            || matches!(cpu.processing_data.address, None)
+        {
+            let is_carry = operand & 1 != 0;
+            let is_zero = result == 0;
+            let is_negative = result & high_bit_mask != 0;
+            cpu.update_processor_status(
+                Some(is_carry),
+                Some(is_zero),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(is_negative),
+            );
+            cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+        }
     }
 }
 /// Return from Interrupt
