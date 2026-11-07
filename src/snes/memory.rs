@@ -1,4 +1,4 @@
-use crate::{snes::memory::cartridge::Cartridge};
+use crate::{bytes::combine_bytes, snes::memory::cartridge::Cartridge};
 
 pub mod cartridge;
 
@@ -39,12 +39,13 @@ impl MemoryController {
     pub fn load_cart(&mut self, cartridge: &Cartridge) {
         // TODO verify ROM data isn't mirrored anywhere
         self.cart_speed = match cartridge.header.speed {
-            MemorySpeed::Fast => FAST_MEMORY_CYCLES
-,
+            MemorySpeed::Fast => FAST_MEMORY_CYCLES,
             MemorySpeed::Slow => SLOW_MEMORY_CYCLES,
         };
-        self.reset_vector = ((cartridge.read_byte(0x00, 0xFFFD).unwrap() as u16) << 8)
-            + cartridge.read_byte(0x00, 0xFFFC).unwrap() as u16;
+        self.reset_vector = combine_bytes(
+            cartridge.read_byte(0x00, 0xFFFD).unwrap(),
+            cartridge.read_byte(0x00, 0xFFFC).unwrap(),
+        );
 
         for bank in 0x00..=0x3F as u8 {
             for address in 0x8000..=0xFFFF as u16 {
@@ -55,27 +56,22 @@ impl MemoryController {
                 cartridge.read_byte(bank, address);
             }
         }
-
     }
     pub fn cycles_to_access(&self, bank: u8, address: u16) -> u8 {
         match bank {
             0x00..0x40 => match address {
                 0x0000..0x2000 => SLOW_MEMORY_CYCLES,
-                0x2000..0x4000 => FAST_MEMORY_CYCLES
-,
+                0x2000..0x4000 => FAST_MEMORY_CYCLES,
                 0x4000..0x4200 => XSLOW_MEMORY_CYCLES,
-                0x4200..0x6000 => FAST_MEMORY_CYCLES
-,
+                0x4200..0x6000 => FAST_MEMORY_CYCLES,
                 0x6000..=0xFFFF => SLOW_MEMORY_CYCLES,
             },
             0x40..0x80 => SLOW_MEMORY_CYCLES,
             0x80..0xC0 => match address {
                 0x0000..0x2000 => SLOW_MEMORY_CYCLES,
-                0x2000..0x4000 => FAST_MEMORY_CYCLES
-,
+                0x2000..0x4000 => FAST_MEMORY_CYCLES,
                 0x4000..0x4200 => XSLOW_MEMORY_CYCLES,
-                0x4200..0x6000 => FAST_MEMORY_CYCLES
-,
+                0x4200..0x6000 => FAST_MEMORY_CYCLES,
                 0x6000..0x8000 => SLOW_MEMORY_CYCLES,
                 0x8000..=0xFFFF => self.cart_speed,
             },
@@ -115,7 +111,7 @@ impl MemoryController {
             }
         }
     }
-    /// Sets the cpu bus to a given location and returns the number 
+    /// Sets the cpu bus to a given location and returns the number
     /// of master cycles needed to access that location in memory
     pub fn cpu_bus_set_location(&mut self, bank: u8, address: u16) -> u8 {
         self.cpu_bus.bank = bank;

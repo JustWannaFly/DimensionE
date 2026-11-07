@@ -742,7 +742,7 @@ pub fn jsl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(4));
         cpu.cycle_push_stack(
             memory_controller,
-            &vec![cpu.program_bank, pc_bytes.0, pc_bytes.1],
+            &vec![cpu.program_bank, pc_bytes.1, pc_bytes.0],
         );
         return;
     }
@@ -757,7 +757,7 @@ pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
     if cpu.processing_data.write_count < 2 {
         let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(2));
-        cpu.cycle_push_stack(memory_controller, &vec![pc_bytes.0, pc_bytes.1]);
+        cpu.cycle_push_stack(memory_controller, &vec![pc_bytes.1, pc_bytes.0]);
         return;
     }
     cpu.program_counter = cpu.processing_data.address.unwrap().1;

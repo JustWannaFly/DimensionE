@@ -139,10 +139,10 @@ impl CPU {
     pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
             LoadingOp => {
-                println!(
-                    "Cycles taken for op: [{}] :: Total Ops: [{}]",
-                    self.processing_data.op_cycles, self.ops_executed
-                );
+                // println!(
+                    // "Cycles taken for op: [{}] :: Total Ops: [{}]",
+                    // self.processing_data.op_cycles, self.ops_executed
+                // );
                 self.ops_executed = self.ops_executed.wrapping_add(1);
                 let op_code =
                     self.read_byte(memory_controller, self.program_bank, self.program_counter);
@@ -328,7 +328,7 @@ impl CPU {
             }
         }
         let args = &self.processing_data.args;
-        let invalid_arg_count_error = "Invalid arg count for address mode";
+        let invalid_arg_count_error = "Unexpected arg count for address mode. This should be impossible and means there is a software bug";
         // TODO verify all address resolutions & timings. I'm tired and confusing myself as I try to check they're correct.
         match address_mode {
             AddressMode::Absolute => {
@@ -730,8 +730,9 @@ impl CPU {
                         if self.processing_data.read_count == 1 {
                             self.processing_data.args.push(byte);
                         } else {
+                            let arg_count = self.processing_data.args.len();
                             self.processing_data.operand =
-                                Some(combine_bytes(byte, self.processing_data.args[2]));
+                                Some(combine_bytes(byte, self.processing_data.args[arg_count-1]));
                             self.processing_data.read_count = 0;
                         }
                     }
