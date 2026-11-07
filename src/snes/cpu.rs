@@ -252,6 +252,8 @@ impl CPU {
             Operation::ROL(address_mode) => op_impls::rol(self, memory_controller, &address_mode),
             Operation::ROR(address_mode) => op_impls::ror(self, memory_controller, &address_mode),
             Operation::RTI => op_impls::rti(self, memory_controller),
+            Operation::RTL => op_impls::rtl(self, memory_controller),
+            Operation::RTS => op_impls::rts(self, memory_controller),
             Operation::SEC => op_impls::sec(self),
             Operation::SED => op_impls::sed(self),
             Operation::SEI => op_impls::sei(self),
