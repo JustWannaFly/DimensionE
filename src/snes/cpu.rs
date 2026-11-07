@@ -126,6 +126,10 @@ impl CPU {
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
     pub fn tick(&mut self, memory_controller: &mut MemoryController) {
+        if !self.ready {
+            // TODO handle NMI or IRQ low interrupt conditions
+            return;
+        }
         if !(self.processing_data.op_error || self.processing_data.address_error) {
             self.ticks_since_cycle += 1;
             let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);

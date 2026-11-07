@@ -29,9 +29,7 @@ pub mod emulator {
             }
         }
         pub fn tick(&mut self) {
-            if self.cpu.ready { // TODO need to add handling for interrupt to reset the ready status
-                self.cpu.tick(&mut self.memory_controller);
-            }
+            self.cpu.tick(&mut self.memory_controller);
             if self.cpu.clock_stop {
                 self.should_run = false
             }
