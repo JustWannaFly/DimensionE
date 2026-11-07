@@ -37,6 +37,7 @@ impl MemoryController {
         }
     }
     pub fn load_cart(&mut self, cartridge: &Cartridge) {
+        // TODO verify ROM data isn't mirrored anywhere
         self.cart_speed = match cartridge.header.speed {
             MemorySpeed::Fast => FAST_MEMORY_CYCLES
 ,
@@ -96,6 +97,7 @@ impl MemoryController {
         *(&bank[address as usize])
     }
     pub fn write(&mut self, bank: u8, address: u16, byte: u8) {
+        // TODO don't write over Read Only Memory
         self.memory_data[bank as usize][address as usize] = byte;
         self.write_mirrors(bank, address, byte);
     }

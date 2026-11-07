@@ -1814,7 +1814,7 @@ pub fn trb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             if cpu.processing_data.delay_count == 0 {
                 cpu.processing_data.delay_count += 1;
-                return
+                return;
             }
             if is8bit || cpu.processing_data.write_count == 2 {
                 let is_zero = result & accumulator_value == 0;
@@ -1854,7 +1854,7 @@ pub fn tsb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             if cpu.processing_data.delay_count == 0 {
                 cpu.processing_data.delay_count += 1;
-                return
+                return;
             }
             if is8bit || cpu.processing_data.write_count == 2 {
                 let is_zero = result & accumulator_value == 0;
@@ -2031,6 +2031,34 @@ pub fn tyx(cpu: &mut CPU) {
         Some(is_negative),
     );
     cpu.advance_program_counter(1);
+}
+/// Wait for Interrupt
+pub fn wai(cpu: &mut CPU) {
+    if cpu.processing_data.op_cycles == 3 {
+        cpu.ready = false;
+        cpu.advance_program_counter(1);
+    }
+}
+/// Exchange B and A Accumulators
+pub fn xba(cpu: &mut CPU) {
+    if cpu.processing_data.op_cycles == 3 {
+        let accum_bytes = split_bytes(cpu.accumulator);
+        let flipped_accumulator = combine_bytes(accum_bytes.0, accum_bytes.1);
+        let is_zero = flipped_accumulator & 0x00FF == 0;
+        let is_negative = flipped_accumulator & 0x0080 != 0;
+        cpu.update_processor_status(
+            None,
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(is_negative),
+        );
+        cpu.accumulator = flipped_accumulator;
+        cpu.advance_program_counter(1);
+    }
 }
 /// Exchange Carry and Emulation Bits
 pub fn xce(cpu: &mut CPU) {

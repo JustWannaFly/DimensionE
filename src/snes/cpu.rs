@@ -56,6 +56,7 @@ pub struct CPU {
     pub program_counter: u16,
     pub emulation_flag: bool,
     pub clock_stop: bool,
+    pub ready: bool,
     memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
     ops_executed: u32,
@@ -77,6 +78,7 @@ impl CPU {
             program_counter: 0x0000_0000,
             emulation_flag: true,
             clock_stop: false,
+            ready: true,
             memory_access_delay: None,
             ticks_since_cycle: BASE_CPU_SPEED,
             ops_executed: 0,
@@ -276,14 +278,10 @@ impl CPU {
             Operation::TXY => op_impls::txy(self),
             Operation::TYA => op_impls::tya(self),
             Operation::TYX => op_impls::tyx(self),
+            Operation::WAI => op_impls::wai(self),
+            Operation::WDM => (),
+            Operation::XBA => op_impls::xba(self),
             Operation::XCE => xce(self),
-            _ => {
-                eprintln!(
-                    "Unsupported Operation  [Operation::{:?}]",
-                    self.processing_data.op
-                );
-                self.processing_data.op_error = true;
-            }
         }
     }
     fn write_byte(
