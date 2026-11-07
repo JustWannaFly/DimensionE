@@ -134,17 +134,14 @@ impl CPU {
             self.ticks_since_cycle += 1;
             let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
             if self.ticks_since_cycle >= ticks_to_delay {
-                match self.memory_access_delay {
-                    Some(_) => {
-                        self.memory_access_delay = None;
-                    }
-                    None => (),
+                if let Some(_) = self.memory_access_delay {
+                    self.memory_access_delay = None;
                 }
-                // println!("");
+                println!("");
                 self.ticks_since_cycle = 0;
                 self.process_cycle(memory_controller);
             }
-            // print!("|");
+            print!("|");
         }
     }
     pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
@@ -343,13 +340,33 @@ impl CPU {
             }
         }
         let args = &self.processing_data.args;
+        let invalid_arg_count_error = "Invalid arg count for address mode";
+        // TODO verify all address resolutions. I'm tired and confusing myself as I try to check they're correct.
         match address_mode {
             AddressMode::Absolute => {
                 self.processing_data.address =
                     Some((self.data_bank, combine_bytes(args[1], args[0])));
                 self.processing_data.read_count = 0;
             }
-            AddressMode::AbsoluteIndirectX => match self.processing_data.args.len() {
+            AddressMode::AbsoluteIndirect => match self.processing_data.args.len() {
+                2 => {
+                    let address =
+                        combine_bytes(self.processing_data.args[1], self.processing_data.args[0]);
+                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let address =
+                        combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
+                            .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    let resolved_addr = combine_bytes(byte, self.processing_data.args[2]);
+                    self.processing_data.address = Some((self.program_bank, resolved_addr));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::AbsoluteIndirectLong => match self.processing_data.args.len() {
                 2 => {
                     let byte = self.read_byte(
                         memory_controller,
@@ -367,52 +384,289 @@ impl CPU {
                     );
                     self.processing_data.args.push(byte);
                 }
-                _ => {
-                    let resolved_addr = self.x.wrapping_add(combine_bytes(
+                4 => {
+                    let byte = self.read_byte(
+                        memory_controller,
+                        self.program_bank,
+                        combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
+                            .wrapping_add(2),
+                    );
+                    self.processing_data.args.push(byte);
+                }
+                5 => {
+                    let resolved_addr =
+                        combine_bytes(self.processing_data.args[3], self.processing_data.args[2]);
+                    self.processing_data.address =
+                        Some((self.processing_data.args[4], resolved_addr));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::AbsoluteIndirectX => match self.processing_data.args.len() {
+                2 => {
+                    let address = self.x.wrapping_add(combine_bytes(
+                        self.processing_data.args[1],
+                        self.processing_data.args[0],
+                    ));
+                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let address = self
+                        .x
+                        .wrapping_add(combine_bytes(
+                            self.processing_data.args[1],
+                            self.processing_data.args[0],
+                        ))
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                4 => {
+                    let resolved_addr = combine_bytes(
                         self.processing_data.args[3],
                         self.processing_data.args[2],
-                    ));
+                    );
                     self.processing_data.address = Some((self.program_bank, resolved_addr));
                     self.processing_data.read_count = 0;
                 }
+                _ => panic!("{}", invalid_arg_count_error),
             },
             AddressMode::AbsoluteLong => {
-                self.processing_data.address =
-                    Some((args[2], combine_bytes(args[1], args[0])));
+                self.processing_data.address = Some((args[2], combine_bytes(args[1], args[0])));
                 self.processing_data.read_count = 0;
             }
             AddressMode::AbsoluteLongX => {
-                self.processing_data.address =
-                    Some((args[2], combine_bytes(args[1], args[0]).wrapping_add(self.x)));
+                self.processing_data.address = Some((
+                    args[2],
+                    combine_bytes(args[1], args[0]).wrapping_add(self.x),
+                ));
                 self.processing_data.read_count = 0;
             }
-            AddressMode::DirectPage => {
-                let required_delay: u8 = if split_bytes(self.direct_page).0 == 0 {
-                    0
-                } else {
-                    1
-                };
-                if self.processing_data.delay_count < required_delay {
-                    self.processing_data.delay_count += 1;
-                    return;
-                }
-                self.processing_data.delay_count = 0;
-                self.processing_data.address = Some((
-                    0,
-                    self.direct_page
-                        .wrapping_add(self.processing_data.args[0] as u16),
-                ));
+            AddressMode::AbsoluteX => {
+                let resolved_address = self.x.wrapping_add(combine_bytes(args[1], args[0]));
+                self.processing_data.address = Some((self.data_bank, resolved_address));
+                self.processing_data.read_count = 0;
+            }
+            AddressMode::AbsoluteY => {
+                let resolved_address = self.y.wrapping_add(combine_bytes(args[1], args[0]));
+                self.processing_data.address = Some((self.data_bank, resolved_address));
+                self.processing_data.read_count = 0;
             }
             AddressMode::Accumulator => {
                 panic!("Should not try to resolve address for Accumulator addressing")
             }
+            AddressMode::DirectPage => {
+                if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                    self.processing_data.delay_count += 1;
+                    return;
+                }
+                self.processing_data.delay_count = 0;
+
+                let resolved_address = self
+                    .direct_page
+                    .wrapping_add(self.processing_data.args[0] as u16);
+                self.processing_data.address = Some((0, resolved_address));
+            }
+            AddressMode::DirectPageIndirect => match self.processing_data.args.len() {
+                1 => {
+                    if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                        self.processing_data.delay_count += 1;
+                        return;
+                    }
+                    self.processing_data.delay_count = 0;
+
+                    let address = self
+                        .direct_page
+                        .wrapping_add(self.processing_data.args[0] as u16);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                2 => {
+                    let address = self
+                        .direct_page
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let resolved_address =
+                        combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
+                    self.processing_data.address = Some((0, resolved_address));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::DirectPageIndirectLong => match self.processing_data.args.len() {
+                1 => {
+                    if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                        self.processing_data.delay_count += 1;
+                        return;
+                    }
+                    self.processing_data.delay_count = 0;
+
+                    let address = self
+                        .direct_page
+                        .wrapping_add(self.processing_data.args[0] as u16);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                2 => {
+                    let address = self
+                        .direct_page
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let address = self
+                        .direct_page
+                        .wrapping_add(combine_bytes(0, self.processing_data.args[0]))
+                        .wrapping_add(2);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                4 => {
+                    let resolved_address =
+                        combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
+                    self.processing_data.address =
+                        Some((self.processing_data.args[3], resolved_address));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::DirectPageIndirectLongY => match self.processing_data.args.len() {
+                1 => {
+                    if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                        self.processing_data.delay_count += 1;
+                        return;
+                    }
+                    self.processing_data.delay_count = 0;
+
+                    let address = self
+                        .y
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                2 => {
+                    let address = self
+                        .y
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let address = self
+                        .y
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+
+                    let resolved_address =
+                        combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
+                    self.processing_data.address = Some((byte, resolved_address));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::DirectPageIndirectX => match self.processing_data.args.len() {
+                1 => {
+                    if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                        self.processing_data.delay_count += 1;
+                        return;
+                    }
+                    self.processing_data.delay_count = 0;
+
+                    let address = self
+                        .x
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                2 => {
+                    let address = self
+                        .x
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                3 => {
+                    let resolved_address =
+                        combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
+                    self.processing_data.address = Some((0, resolved_address));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::DirectPageIndirectY => match self.processing_data.args.len() {
+                1 => {
+                    if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                        self.processing_data.delay_count += 1;
+                        return;
+                    }
+                    self.processing_data.delay_count = 0;
+
+                    let address = self
+                        .y
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    self.processing_data.args.push(byte);
+                }
+                2 => {
+                    let address = self
+                        .y
+                        .wrapping_add(self.direct_page)
+                        .wrapping_add(self.processing_data.args[0] as u16)
+                        .wrapping_add(1);
+                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let resolved_address = combine_bytes(byte, self.processing_data.args[1]);
+                    self.processing_data.address = Some((0, resolved_address));
+                    self.processing_data.read_count = 0;
+                }
+                _ => panic!("{}", invalid_arg_count_error),
+            },
+            AddressMode::DirectPageX => {
+                if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                    self.processing_data.delay_count += 1;
+                    return;
+                }
+                self.processing_data.delay_count = 0;
+
+                let resolved_address = self
+                    .x
+                    .wrapping_add(self.direct_page)
+                    .wrapping_add(self.processing_data.args[0] as u16);
+                self.processing_data.address = Some((0, resolved_address));
+            }
+            AddressMode::DirectPageY => {
+                if self.processing_data.delay_count == 0 && self.direct_page & 0x00FF != 0 {
+                    self.processing_data.delay_count += 1;
+                    return;
+                }
+                self.processing_data.delay_count = 0;
+
+                let resolved_address = self
+                    .y
+                    .wrapping_add(self.direct_page)
+                    .wrapping_add(self.processing_data.args[0] as u16);
+                self.processing_data.address = Some((0, resolved_address));
+            }
             AddressMode::Immediate => {
                 panic!("Should not try to resolve address for Immediate addressing")
             }
-            _ => {
-                eprintln!("Unsupported AddressMode::{:?}", address_mode);
-                self.processing_data.address_error = true;
-            }
+            AddressMode::StackRelative => {}
+            AddressMode::StackRelativeIndirectY => {}
         }
     }
     fn cycle_operand_loading(
