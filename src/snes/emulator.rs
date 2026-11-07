@@ -30,7 +30,7 @@ pub mod emulator {
         }
         pub fn tick(&mut self) {
             self.cpu.tick(&mut self.memory_controller);
-            if self.cpu.processing_data.debug_pause {
+            if self.cpu.clock_stop {
                 self.should_run = false
             }
         }

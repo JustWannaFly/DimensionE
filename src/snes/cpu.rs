@@ -42,7 +42,6 @@ pub struct ProcessingDetails {
     pub delay_count: u8,
     pub op_error: bool,
     pub address_error: bool,
-    pub debug_pause: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -56,6 +55,7 @@ pub struct CPU {
     pub program_bank: u8,
     pub program_counter: u16,
     pub emulation_flag: bool,
+    pub clock_stop: bool,
     memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
     ops_executed: u32,
@@ -76,6 +76,7 @@ impl CPU {
             program_bank: 0x0000,
             program_counter: 0x0000_0000,
             emulation_flag: true,
+            clock_stop: false,
             memory_access_delay: None,
             ticks_since_cycle: BASE_CPU_SPEED,
             ops_executed: 0,
@@ -92,7 +93,6 @@ impl CPU {
                 delay_count: 0,
                 op_error: false,
                 address_error: false,
-                debug_pause: false,
             },
         }
     }
@@ -120,7 +120,6 @@ impl CPU {
             delay_count: 0,
             op_error: false,
             address_error: false,
-            debug_pause: false,
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
@@ -163,7 +162,6 @@ impl CPU {
                     delay_count: 0,
                     op_error: false,
                     address_error: false,
-                    debug_pause: false,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
@@ -254,11 +252,13 @@ impl CPU {
             Operation::RTI => op_impls::rti(self, memory_controller),
             Operation::RTL => op_impls::rtl(self, memory_controller),
             Operation::RTS => op_impls::rts(self, memory_controller),
+            Operation::SBC(address_mode) => op_impls::sbc(self, memory_controller, &address_mode),
             Operation::SEC => op_impls::sec(self),
             Operation::SED => op_impls::sed(self),
             Operation::SEI => op_impls::sei(self),
             Operation::SEP => op_impls::sep(self, memory_controller),
             Operation::STA(address_mode) => op_impls::sta(self, memory_controller, &address_mode),
+            Operation::STP => op_impls::stp(self),
             Operation::STX(address_mode) => op_impls::stx(self, memory_controller, &address_mode),
             Operation::STY(address_mode) => op_impls::sty(self, memory_controller, &address_mode),
             Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
@@ -267,6 +267,8 @@ impl CPU {
             Operation::TCD => op_impls::tcd(self),
             Operation::TCS => op_impls::tcs(self),
             Operation::TDC => op_impls::tdc(self),
+            Operation::TRB(address_mode) => op_impls::trb(self, memory_controller, &address_mode),
+            Operation::TSB(address_mode) => op_impls::tsb(self, memory_controller, &address_mode),
             Operation::TSC => op_impls::tsc(self),
             Operation::TSX => op_impls::tsx(self),
             Operation::TXA => op_impls::txa(self),

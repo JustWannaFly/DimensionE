@@ -127,7 +127,6 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
-        let bit15mask = 0x8000_u16;
         let is_carry_in = check_bits_set(cpu.processor_status, CARRY_MASK);
         let is_bcd = check_bits_set(cpu.processor_status, DECIMAL_MASK);
         let mut sum = if is_carry_in { 1_u32 } else { 0_u32 };
@@ -143,7 +142,7 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         let mut is_negative = if is8bit {
             sum & 0x0080 != 0
         } else {
-            sum & bit15mask as u32 != 0
+            sum & 0x8000 != 0
         };
         if is_bcd {
             is_negative = false;
@@ -152,7 +151,7 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
         let is_zero = sum == 0;
 
         if is8bit {
-            sum = sum & 0x0000_FFFF;
+            sum = sum & 0x0000_00FF;
         }
         cpu.accumulator = sum as u16;
         cpu.update_processor_status(
@@ -1393,7 +1392,7 @@ pub fn ror(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             result = operand >> 1;
             high_bit_mask = 0x0080;
         }
-        
+
         if check_bits_set(cpu.processor_status, CARRY_MASK) {
             result += high_bit_mask;
         }
@@ -1475,7 +1474,8 @@ pub fn rtl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         }
         4 => {
             let high_byte = cpu.stack_pop_byte(memory_controller);
-            let return_address = combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
+            let return_address =
+                combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
             cpu.processing_data.operand = Some(return_address);
         }
         5 => {
@@ -1486,7 +1486,7 @@ pub fn rtl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
             cpu.program_counter = cpu.processing_data.operand.unwrap();
             cpu.processing_state = LoadingOp;
         }
-        _ => ()
+        _ => (),
     }
 }
 /// Return from Subroutine
@@ -1499,7 +1499,8 @@ pub fn rts(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         }
         4 => {
             let high_byte = cpu.stack_pop_byte(memory_controller);
-            let return_address = combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
+            let return_address =
+                combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
             cpu.processing_data.operand = Some(return_address);
         }
         5 => {
@@ -1510,7 +1511,66 @@ pub fn rts(cpu: &mut CPU, memory_controller: &mut MemoryController) {
             cpu.program_counter = cpu.processing_data.operand.unwrap();
             cpu.processing_state = LoadingOp;
         }
-        _ => ()
+        _ => (),
+    }
+}
+/// Subtract with Carry
+pub fn sbc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    if let None = cpu.processing_data.operand {
+        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+    }
+    if let Some(operand) = cpu.processing_data.operand {
+        let carry_subtract_value = if check_bits_set(cpu.processor_status, CARRY_MASK) {
+            1_u32
+        } else {
+            0_u32
+        };
+        let is_bcd = check_bits_set(cpu.processor_status, DECIMAL_MASK);
+        let mut difference;
+        let mut is_bcd_overflow = false;
+        if is_bcd {
+            difference = (get_bdc_value(cpu.accumulator) as u32)
+                .wrapping_sub(get_bdc_value(operand) as u32)
+                .wrapping_sub(carry_subtract_value);
+            is_bcd_overflow = difference > 9999;
+            difference = encode_bdc(difference as u16) as u32;
+        } else if is8bit {
+            difference = ((cpu.accumulator & 0x00FF) as u32)
+                .wrapping_sub(operand as u32)
+                .wrapping_sub(carry_subtract_value);
+        } else {
+            difference = (cpu.accumulator as u32)
+                .wrapping_sub(operand as u32)
+                .wrapping_sub(carry_subtract_value);
+        }
+        let mut is_overflow = difference & 0x8000_0000 != 0;
+        let mut is_negative = if is8bit {
+            difference & 0x0080 != 0
+        } else {
+            difference & 0x8000 != 0
+        };
+        if is_bcd {
+            is_negative = false;
+            is_overflow = is_bcd_overflow;
+        }
+        let is_zero = difference == 0;
+
+        if is8bit {
+            difference = difference & 0x0000_00FF;
+        }
+        cpu.accumulator = difference as u16;
+        cpu.update_processor_status(
+            Some(!is_negative),
+            Some(is_zero),
+            None,
+            None,
+            None,
+            None,
+            Some(is_overflow),
+            Some(is_negative),
+        );
+        cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
     }
 }
 /// Set Interrupt Disable Flag
@@ -1557,6 +1617,13 @@ pub fn sta(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
                 cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
             }
         }
+    }
+}
+/// Stop the Clock
+pub fn stp(cpu: &mut CPU) {
+    if cpu.processing_data.op_cycles == 3 {
+        cpu.clock_stop = true;
+        cpu.advance_program_counter(1);
     }
 }
 /// Store X
@@ -1726,6 +1793,85 @@ pub fn tdc(cpu: &mut CPU) {
         Some(is_negative),
     );
     cpu.advance_program_counter(1);
+}
+/// Test and Reset Bits
+pub fn trb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    match cpu.processing_data.operand {
+        None => cpu.cycle_operand_loading(address_mode, memory_controller, is8bit),
+        Some(operand) => {
+            let accumulator_value = if is8bit {
+                cpu.accumulator & 0x00FF
+            } else {
+                cpu.accumulator
+            };
+            let result = operand & (!accumulator_value);
+            let address = cpu.processing_data.address.unwrap();
+            if is8bit {
+                cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+            } else {
+                cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+            }
+            if cpu.processing_data.delay_count == 0 {
+                cpu.processing_data.delay_count += 1;
+                return
+            }
+            if is8bit || cpu.processing_data.write_count == 2 {
+                let is_zero = result & accumulator_value == 0;
+                cpu.update_processor_status(
+                    None,
+                    Some(is_zero),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+                cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+            }
+        }
+    }
+}
+
+/// Test and Set Bits
+pub fn tsb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+    let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
+    match cpu.processing_data.operand {
+        None => cpu.cycle_operand_loading(address_mode, memory_controller, is8bit),
+        Some(operand) => {
+            let accumulator_value = if is8bit {
+                cpu.accumulator & 0x00FF
+            } else {
+                cpu.accumulator
+            };
+            let result = operand | accumulator_value;
+            let address = cpu.processing_data.address.unwrap();
+            if is8bit {
+                cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+            } else {
+                cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+            }
+            if cpu.processing_data.delay_count == 0 {
+                cpu.processing_data.delay_count += 1;
+                return
+            }
+            if is8bit || cpu.processing_data.write_count == 2 {
+                let is_zero = result & accumulator_value == 0;
+                cpu.update_processor_status(
+                    None,
+                    Some(is_zero),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+                cpu.advance_program_counter_with_address_mode(address_mode, is8bit);
+            }
+        }
+    }
 }
 /// Register Transfer: Stack Pointer to Accumulator
 pub fn tsc(cpu: &mut CPU) {
