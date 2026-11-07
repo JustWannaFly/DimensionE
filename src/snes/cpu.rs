@@ -40,8 +40,6 @@ pub struct ProcessingDetails {
     pub write_count: u8,
     pub read_count: u8,
     pub delay_count: u8,
-    pub op_error: bool,
-    pub address_error: bool,
 }
 pub struct CPU {
     // TODO add support for emulation mode & decimal mode
@@ -93,8 +91,6 @@ impl CPU {
                 write_count: 0,
                 read_count: 0,
                 delay_count: 0,
-                op_error: false,
-                address_error: false,
             },
         }
     }
@@ -120,8 +116,6 @@ impl CPU {
             write_count: 0,
             read_count: 0,
             delay_count: 0,
-            op_error: false,
-            address_error: false,
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
@@ -130,19 +124,17 @@ impl CPU {
             // TODO handle NMI or IRQ low interrupt conditions
             return;
         }
-        if !(self.processing_data.op_error || self.processing_data.address_error) {
-            self.ticks_since_cycle += 1;
-            let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
-            if self.ticks_since_cycle >= ticks_to_delay {
-                if let Some(_) = self.memory_access_delay {
-                    self.memory_access_delay = None;
-                }
-                println!("");
-                self.ticks_since_cycle = 0;
-                self.process_cycle(memory_controller);
+        self.ticks_since_cycle += 1;
+        let ticks_to_delay = self.memory_access_delay.unwrap_or(BASE_CPU_SPEED);
+        if self.ticks_since_cycle >= ticks_to_delay {
+            if let Some(_) = self.memory_access_delay {
+                self.memory_access_delay = None;
             }
-            print!("|");
+            // println!("");
+            self.ticks_since_cycle = 0;
+            self.process_cycle(memory_controller);
         }
+        // print!("|");
     }
     pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
         match &self.processing_state {
@@ -163,8 +155,6 @@ impl CPU {
                     write_count: 0,
                     read_count: 0,
                     delay_count: 0,
-                    op_error: false,
-                    address_error: false,
                 };
                 println!(
                     "Next instruction: [{:X}:{:X}]:[{:X}:{:?}]",
@@ -182,9 +172,7 @@ impl CPU {
         if matches!(self.processing_state, LoadingOp) {
             self.process_cycle(memory_controller);
         }
-        while !matches!(self.processing_state, LoadingOp)
-            && !(self.processing_data.op_error || self.processing_data.address_error)
-        {
+        while !matches!(self.processing_state, LoadingOp) {
             self.process_cycle(memory_controller);
         }
     }
@@ -423,10 +411,8 @@ impl CPU {
                     self.processing_data.args.push(byte);
                 }
                 4 => {
-                    let resolved_addr = combine_bytes(
-                        self.processing_data.args[3],
-                        self.processing_data.args[2],
-                    );
+                    let resolved_addr =
+                        combine_bytes(self.processing_data.args[3], self.processing_data.args[2]);
                     self.processing_data.address = Some((self.program_bank, resolved_addr));
                     self.processing_data.read_count = 0;
                 }
