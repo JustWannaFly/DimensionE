@@ -17,6 +17,7 @@ struct Bus {
     address: u16,
 }
 pub struct MemoryController {
+    cartridge: Option<Cartridge>,
     cart_speed: u8,
     memory_data: Vec<Vec<u8>>,
     pub reset_vector: u16,
@@ -27,8 +28,10 @@ pub struct MemoryController {
 impl MemoryController {
     pub fn new() -> MemoryController {
         MemoryController {
+            cartridge: None,
             cart_speed: 0,
-            memory_data: vec![vec![0; 0xFFFF + 1]; 0xFF + 1],
+            // TODO trim the size down to not hold rom or mirrored data
+            memory_data: vec![vec![0; 0xFFFF + 1]; 0x80 + 1],
             reset_vector: 0x0000,
             cpu_bus: Bus {
                 bank: 0x00,
@@ -36,8 +39,7 @@ impl MemoryController {
             },
         }
     }
-    pub fn load_cart(&mut self, cartridge: &Cartridge) {
-        // TODO verify ROM data isn't mirrored anywhere
+    pub fn load_cart(&mut self, cartridge: Cartridge) {
         self.cart_speed = match cartridge.header.speed {
             MemorySpeed::Fast => FAST_MEMORY_CYCLES,
             MemorySpeed::Slow => SLOW_MEMORY_CYCLES,
@@ -46,16 +48,7 @@ impl MemoryController {
             cartridge.read_byte(0x00, 0xFFFD).unwrap(),
             cartridge.read_byte(0x00, 0xFFFC).unwrap(),
         );
-
-        for bank in 0x00..=0x3F as u8 {
-            for address in 0x8000..=0xFFFF as u16 {
-                match cartridge.read_byte(bank, address) {
-                    Some(byte) => self.memory_data[bank as usize][address as usize] = byte,
-                    _ => (),
-                }
-                cartridge.read_byte(bank, address);
-            }
-        }
+        self.cartridge = Some(cartridge);
     }
     pub fn cycles_to_access(&self, bank: u8, address: u16) -> u8 {
         match bank {
@@ -79,37 +72,62 @@ impl MemoryController {
         }
     }
     pub fn read(&self, bank: u8, address: u16, length: u16) -> Vec<u8> {
-        let bank = self.memory_data.get(bank as usize).unwrap();
         let mut result = vec![];
         let mut read_addr = address;
         while result.len() < length as usize {
-            result.push(*bank.get(read_addr as usize).unwrap());
+            result.push(self.read_byte(bank, read_addr));
             read_addr = read_addr.wrapping_add(1);
         }
         result
     }
     pub fn read_byte(&self, bank: u8, address: u16) -> u8 {
-        let bank = self.memory_data.get(bank as usize).unwrap();
-        *(&bank[address as usize])
+        match bank {
+            0x00..0x20 => match address {
+                0x0000..0x2000 => self.memory_data[0x00][address as usize],
+                0x2000..0x8000 => self.memory_data[bank as usize][address as usize],
+                0x8000..=0xFFFF => self.read_cartridge(bank, address),
+            },
+            0x20..0x40 => match address {
+                0x0000..0x2000 => self.memory_data[0x00][address as usize],
+                0x2000..0x8000 => self.memory_data[bank as usize][address as usize],
+                0x8000..=0xFFFF => self.read_cartridge(bank, address),
+            },
+            0x40..0x7E => self.read_cartridge(bank, address),
+            0x7E => match address {
+                0x0000..0x2000 => self.memory_data[0x00][address as usize],
+                0x2000..=0xFFFF => self.memory_data[bank as usize][address as usize],
+            },
+            0x7F => self.memory_data[bank as usize][address as usize],
+            0x80..0xFE => self.read_byte(bank - 0x80, address),
+            0xFE..=0xFF => self.read_cartridge(bank, address),
+        }
+    }
+    fn read_cartridge(&self, bank: u8, address: u16) -> u8 {
+        if let Some(cartridge) = &self.cartridge {
+            cartridge.read_byte(bank, address).unwrap_or(0)
+        } else { 0 }
     }
     pub fn write(&mut self, bank: u8, address: u16, byte: u8) {
-        // TODO don't write over Read Only Memory
-        self.memory_data[bank as usize][address as usize] = byte;
-        self.write_mirrors(bank, address, byte);
-    }
-    fn write_mirrors(&mut self, bank: u8, address: u16, byte: u8) {
-        if (bank <= 0x3F && address <= 0x1FFF)
-            || (bank == 0x7E && address <= 0x1FFF)
-            || (0x80 <= bank && bank <= 0xBF && address <= 0x1FFF)
-        {
-            for bank in 0x00..=0x3F {
-                self.memory_data[bank][address as usize] = byte;
-            }
-            self.memory_data[0x7E as usize][address as usize] = byte;
-            for bank in 0x80..=0xBF {
-                self.memory_data[bank][address as usize] = byte;
-            }
-        }
+        match bank {
+            0x00..0x20 => match address {
+                0x0000..0x2000 => self.memory_data[0x00][address as usize] = byte,
+                0x2000..0x8000 => self.memory_data[bank as usize][address as usize] = byte,
+                0x8000..=0xFFFF => (),
+            },
+            0x20..0x40 => match address {
+                0x0000..0x2000 => self.memory_data[0x00][address as usize] = byte,
+                0x2000..0x8000 => self.memory_data[bank as usize][address as usize] = byte,
+                0x8000..=0xFFFF => (),
+            },
+            0x40..0x7E => (),
+            0x7E => match address {
+                0x0000..0x2000 => self.memory_data[0x00][address as usize] = byte,
+                0x2000..=0xFFFF => self.memory_data[bank as usize][address as usize] = byte,
+            },
+            0x7F => self.memory_data[bank as usize][address as usize] = byte,
+            0x80..0xFE => self.write(bank - 0x80, address, byte),
+            0xFE..=0xFF => (),
+        };
     }
     /// Sets the cpu bus to a given location and returns the number
     /// of master cycles needed to access that location in memory

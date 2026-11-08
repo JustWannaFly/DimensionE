@@ -18,7 +18,7 @@ pub mod emulator {
                 cart_loaded: false,
             }
         }
-        pub fn load_cartridge(&mut self, cartridge: &Cartridge) {
+        pub fn load_cartridge(&mut self, cartridge: Cartridge) {
             self.memory_controller.load_cart(cartridge);
             self.cpu.initialize(self.memory_controller.reset_vector);
             self.cart_loaded = true;

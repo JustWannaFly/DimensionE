@@ -18,9 +18,9 @@ fn main() {
 
     let mut app = Application::new();
     let cart = snes::memory::cartridge::Cartridge::new(
-        fs::read("roms/snes-tests/cputest/cputest-basic.sfc").expect("should be able to read a rom"),
+        fs::read("roms/Chrono Trigger.sfc").expect("should be able to read a rom"),
     );
-    app.emulator.load_cartridge(&cart);
+    app.emulator.load_cartridge(cart);
     let app_result = event_loop.run_app(&mut app);
     let Some(error) = app_result.err() else {
         println!("App exiting");
