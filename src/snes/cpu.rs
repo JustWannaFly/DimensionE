@@ -268,7 +268,7 @@ impl CPU {
             Operation::TYA => op_impls::tya(self),
             Operation::TYX => op_impls::tyx(self),
             Operation::WAI => op_impls::wai(self),
-            Operation::WDM => (),
+            Operation::WDM => op_impls::nop(self),
             Operation::XBA => op_impls::xba(self),
             Operation::XCE => xce(self),
         }

@@ -166,10 +166,10 @@ fn lo_rom_lookup(bank: u8, address: u16) -> usize {
 }
 
 fn hi_rom_lookup(bank: u8, address: u16) -> usize {
-    todo!("fix hiRom mapping");
     let bank_offset;
     match bank {
-        0x40..=0x7D => bank_offset = bank - 0x40,
+        0x40..0x7E => bank_offset = bank - 0x40,
+        0x80..0xFE => bank_offset = bank - 0x80,
         0xFE..=0xFF => bank_offset = bank - 0xC0,
         _ => bank_offset = bank,
     }

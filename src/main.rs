@@ -18,7 +18,7 @@ fn main() {
 
     let mut app = Application::new();
     let cart = snes::memory::cartridge::Cartridge::new(
-        fs::read("roms/Super Mario All Stars.sfc").expect("should be able to read a rom"),
+        fs::read("roms/Chrono Trigger.sfc").expect("should be able to read a rom"),
     );
     app.emulator.load_cartridge(cart);
     let app_result = event_loop.run_app(&mut app);
