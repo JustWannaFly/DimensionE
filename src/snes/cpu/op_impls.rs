@@ -739,7 +739,7 @@ pub fn jsl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
         return;
     }
     if cpu.processing_data.write_count < 3 {
-        let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(4));
+        let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(3));
         cpu.cycle_push_stack(
             memory_controller,
             &vec![cpu.program_bank, pc_bytes.1, pc_bytes.0],
@@ -1466,17 +1466,17 @@ pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
 pub fn rtl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     match cpu.processing_data.op_cycles {
         2 => {
-            cpu.program_bank = cpu.stack_pop_byte(memory_controller);
-        }
-        3 => {
             let low_byte = cpu.stack_pop_byte(memory_controller);
             cpu.processing_data.operand = Some(low_byte as u16)
         }
-        4 => {
+        3 => {
             let high_byte = cpu.stack_pop_byte(memory_controller);
             let return_address =
                 combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
             cpu.processing_data.operand = Some(return_address);
+        }
+        4 => {
+            cpu.program_bank = cpu.stack_pop_byte(memory_controller);
         }
         5 => {
             let next_instruction_address = cpu.processing_data.operand.unwrap().wrapping_add(1);

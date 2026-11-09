@@ -70,7 +70,7 @@ impl CPU {
             y: 0x0000_0000,
             direct_page: 0x0000_0000,
             stack_pointer: 0x0000_0000,
-            processor_status: 0x0000,
+            processor_status: ACCUMULATOR_MASK + INDEX_REG_MASK + IRQ_MASK,
             data_bank: 0x0000,
             program_bank: 0x0000,
             program_counter: 0x0000_0000,
@@ -99,7 +99,7 @@ impl CPU {
         self.memory_access_delay = None;
         self.ticks_since_cycle = BASE_CPU_SPEED;
 
-        self.processor_status = 0x00;
+        self.processor_status = ACCUMULATOR_MASK + INDEX_REG_MASK + IRQ_MASK;
         self.data_bank = 0x0000;
         self.direct_page = 0x0000_0000;
         self.program_bank = 0x0000_0000;

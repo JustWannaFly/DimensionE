@@ -149,15 +149,20 @@ impl Cartridge {
 }
 
 fn lo_rom_lookup(bank: u8, address: u16) -> usize {
-    let bank_size: usize = 0x8000;
-    let bank_to_access = if bank < 0x80 { bank } else { bank - 0x80 };
-    let bank_offset = bank_to_access as usize * bank_size;
+    let bank_size = 0x8000_u16;
+    let mapped_bank;
+    let mapped_address;
 
-    let mut address_offset = address as usize;
-    if address_offset >= bank_size {
-        address_offset -= bank_size;
+    match bank {
+        0x00..0x80 => mapped_bank = bank / 2,
+        0x80..=0xFF => mapped_bank = (bank - 0x80) / 2,
     }
-    bank_offset + address_offset
+    if bank % 2 == 0 && address >= bank_size {
+        mapped_address = address - bank_size;
+    } else {
+        mapped_address = address;
+    }
+    ((mapped_bank as usize) << 16) + mapped_address as usize
 }
 
 fn hi_rom_lookup(bank: u8, address: u16) -> usize {
