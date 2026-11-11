@@ -2291,6 +2291,7 @@ mod tests {
         cpu.initialize(address);
         cpu.program_bank = bank;
         cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.stack_pointer = 0x0005;
         memory_controller.write(bank, address, 0x00); // BRK
 
@@ -2458,6 +2459,7 @@ mod tests {
         cpu.initialize(address);
         cpu.program_bank = bank;
         cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.stack_pointer = 0x0005;
         memory_controller.write(bank, address, 0x02); // COP
 
@@ -2520,6 +2522,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.accumulator = 0x1234;
         memory_controller.write(0x00, 0x0000, 0x48);
 
@@ -2614,6 +2618,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.x = 0x1234;
         memory_controller.write(0x00, 0x0000, 0xDA);
 
@@ -2634,6 +2640,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.y = 0x1234;
         memory_controller.write(0x00, 0x0000, 0x5A);
 
@@ -2654,6 +2662,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.accumulator = 0x0000;
         memory_controller.write(0x00, 0x0000, 0x68);
         cpu.stack_push_byte(&mut memory_controller, 0x12);
@@ -2735,6 +2745,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.x = 0x0000;
         memory_controller.write(0x00, 0x0000, 0xFA);
         cpu.stack_push_byte(&mut memory_controller, 0x12);
@@ -2756,6 +2768,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         cpu.y = 0x0000;
         memory_controller.write(0x00, 0x0000, 0x7A);
         cpu.stack_push_byte(&mut memory_controller, 0x12);
@@ -2822,7 +2836,8 @@ mod tests {
         let mut cpu = CPU::new();
         let mut memory_controller = MemoryController::new();
         cpu.initialize(0x0000);
-        assert_eq!(0b0000_0000, cpu.processor_status);
+        cpu.emulation_flag = false;
+        cpu.processor_status = 0;
         memory_controller.write(0x00, 0x0000, 0x78); // SEI
 
         cpu.process_cycle(&mut memory_controller);

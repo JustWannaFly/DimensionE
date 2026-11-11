@@ -140,8 +140,8 @@ impl CPU {
         match &self.processing_state {
             LoadingOp => {
                 // println!(
-                    // "Cycles taken for op: [{}] :: Total Ops: [{}]",
-                    // self.processing_data.op_cycles, self.ops_executed
+                // "Cycles taken for op: [{}] :: Total Ops: [{}]",
+                // self.processing_data.op_cycles, self.ops_executed
                 // );
                 self.ops_executed = self.ops_executed.wrapping_add(1);
                 let op_code =
@@ -340,14 +340,14 @@ impl CPU {
                 2 => {
                     let address =
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0]);
-                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
                     let address =
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
                             .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     let resolved_addr = combine_bytes(byte, self.processing_data.args[2]);
                     self.processing_data.address = Some((self.program_bank, resolved_addr));
                     self.processing_data.read_count = 0;
@@ -423,10 +423,11 @@ impl CPU {
                 self.processing_data.read_count = 0;
             }
             AddressMode::AbsoluteLongX => {
-                self.processing_data.address = Some((
-                    args[2],
-                    combine_bytes(args[1], args[0]).wrapping_add(self.x),
-                ));
+                let arg_address = combine_bytes(args[1], args[0]);
+                let resolved_address = arg_address.wrapping_add(self.x);
+                let dbr_carry = if resolved_address < arg_address { 1 } else { 0 };
+                self.processing_data.address =
+                    Some((args[2].wrapping_add(dbr_carry), resolved_address));
                 self.processing_data.read_count = 0;
             }
             AddressMode::AbsoluteX => {
@@ -466,7 +467,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -474,13 +475,13 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
                     let resolved_address =
                         combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
-                    self.processing_data.address = Some((0, resolved_address));
+                    self.processing_data.address = Some((self.data_bank, resolved_address));
                     self.processing_data.read_count = 0;
                 }
                 _ => panic!("{}", invalid_arg_count_error),
@@ -496,7 +497,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -504,7 +505,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -512,7 +513,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(combine_bytes(0, self.processing_data.args[0]))
                         .wrapping_add(2);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 4 => {
@@ -533,32 +534,34 @@ impl CPU {
                     self.processing_data.delay_count = 0;
 
                     let address = self
-                        .y
-                        .wrapping_add(self.direct_page)
+                        .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
                     let address = self
-                        .y
-                        .wrapping_add(self.direct_page)
+                        .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
                     let address = self
-                        .y
-                        .wrapping_add(self.direct_page)
+                        .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
 
-                    let resolved_address =
+                    let arg_address =
                         combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
-                    self.processing_data.address = Some((byte, resolved_address));
+
+                    let resolved_address = arg_address.wrapping_add(self.y);
+                    let bank_carry = if resolved_address < arg_address { 1 } else { 0 };
+
+                    self.processing_data.address =
+                        Some((byte.wrapping_add(bank_carry), resolved_address));
                     self.processing_data.read_count = 0;
                 }
                 _ => panic!("{}", invalid_arg_count_error),
@@ -590,7 +593,7 @@ impl CPU {
                 3 => {
                     let resolved_address =
                         combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
-                    self.processing_data.address = Some((0, resolved_address));
+                    self.processing_data.address = Some((self.data_bank, resolved_address));
                     self.processing_data.read_count = 0;
                 }
                 _ => panic!("{}", invalid_arg_count_error),
@@ -604,21 +607,20 @@ impl CPU {
                     self.processing_data.delay_count = 0;
 
                     let address = self
-                        .y
-                        .wrapping_add(self.direct_page)
+                        .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
                     let address = self
-                        .y
-                        .wrapping_add(self.direct_page)
+                        .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
-                    let resolved_address = combine_bytes(byte, self.processing_data.args[1]);
-                    self.processing_data.address = Some((0, resolved_address));
+                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let resolved_address =
+                        combine_bytes(byte, self.processing_data.args[1]).wrapping_add(self.y);
+                    self.processing_data.address = Some((self.data_bank, resolved_address));
                     self.processing_data.read_count = 0;
                 }
                 _ => panic!("{}", invalid_arg_count_error),
@@ -658,7 +660,7 @@ impl CPU {
                 let resolved_address = self
                     .stack_pointer
                     .wrapping_add(self.processing_data.args[0] as u16);
-                self.processing_data.address = Some((0, resolved_address));
+                self.processing_data.address = Some((0x00, resolved_address));
                 self.processing_data.read_count = 0;
             }
             AddressMode::StackRelativeIndirectY => match self.processing_data.args.len() {
@@ -666,7 +668,7 @@ impl CPU {
                     let address = self
                         .stack_pointer
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, 0, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -674,15 +676,18 @@ impl CPU {
                         .stack_pointer
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0, address);
+                    let byte = self.read_byte(memory_controller, 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
-                    let resolved_address = self.y.wrapping_add(combine_bytes(
+                    let arg_address = combine_bytes(
                         self.processing_data.args[2],
                         self.processing_data.args[1],
-                    ));
-                    self.processing_data.address = Some((self.data_bank, resolved_address));
+                    );
+                    let resolved_address = arg_address.wrapping_add(self.y);
+                    let bank_carry = if resolved_address < arg_address { 1 } else { 0 };
+
+                    self.processing_data.address = Some((self.data_bank.wrapping_add(bank_carry), resolved_address));
                     self.processing_data.read_count = 0;
                 }
                 _ => panic!("{}", invalid_arg_count_error),
@@ -731,8 +736,10 @@ impl CPU {
                             self.processing_data.args.push(byte);
                         } else {
                             let arg_count = self.processing_data.args.len();
-                            self.processing_data.operand =
-                                Some(combine_bytes(byte, self.processing_data.args[arg_count-1]));
+                            self.processing_data.operand = Some(combine_bytes(
+                                byte,
+                                self.processing_data.args[arg_count - 1],
+                            ));
                             self.processing_data.read_count = 0;
                         }
                     }
