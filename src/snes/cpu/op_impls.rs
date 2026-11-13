@@ -1,30 +1,23 @@
 use crate::{
     bytes::{check_bits_set, combine_bytes, encode_bdc, get_bdc_value, split_bytes},
-    snes::{
-        cpu::{
-            ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK,
-            NEGATIVE_MASK, OVERFLOW_MASK,
-            ProcessingState::LoadingOp,
-            ZERO_MASK,
-            op_impls::helpers::{branch_if_clear, branch_if_set, branch_near_helper},
-            ops::AddressMode::{self, Immediate},
-        },
-        memory::MemoryController,
+    snes::cpu::{
+        ACCUMULATOR_MASK, CARRY_MASK, CPU, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, NEGATIVE_MASK,
+        OVERFLOW_MASK,
+        ProcessingState::LoadingOp,
+        ZERO_MASK,
+        op_impls::helpers::{branch_if_clear, branch_if_set, branch_near_helper},
+        ops::AddressMode::{self, Immediate},
     },
 };
 
 mod helpers {
     use crate::{
         bytes::{check_bits_set, check_bits_unset, combine_bytes, split_bytes},
-        snes::{
-            cpu::{CPU, ProcessingState::LoadingOp},
-            memory::MemoryController,
-        },
+        snes::cpu::{CPU, ProcessingState::LoadingOp},
     };
 
     pub(crate) fn stack_jump_helper(
         cpu: &mut CPU,
-        memory_controller: &mut MemoryController,
         native_lookup: u16,
         emulation_lookup: u16,
     ) -> bool {
@@ -39,16 +32,16 @@ mod helpers {
         stack_values.push(return_address_bytes.0);
         stack_values.push(cpu.processor_status);
         if stack_values.len() as u8 > cpu.processing_data.write_count {
-            cpu.cycle_push_stack(memory_controller, &stack_values);
+            cpu.cycle_push_stack(&stack_values);
             false
         } else {
             match cpu.processing_data.read_count {
                 0 => {
-                    let byte = cpu.read_byte(memory_controller, 0, brk_vector_lookup);
+                    let byte = cpu.read_byte(0, brk_vector_lookup);
                     cpu.processing_data.args.push(byte);
                 }
                 1 => {
-                    let byte = cpu.read_byte(memory_controller, 0, brk_vector_lookup + 1);
+                    let byte = cpu.read_byte(0, brk_vector_lookup + 1);
                     cpu.processing_data.args.push(byte);
                 }
                 _ => {
@@ -62,15 +55,11 @@ mod helpers {
             false
         }
     }
-    pub fn branch_near_helper(
-        cpu: &mut CPU,
-        memory_controller: &mut MemoryController,
-        take_branch: bool,
-    ) {
+    pub fn branch_near_helper(cpu: &mut CPU, take_branch: bool) {
         if take_branch {
             let mut last_cycle = 3_u8;
             if cpu.processing_data.read_count == 0 {
-                cpu.load_one_arg(memory_controller);
+                cpu.load_one_arg();
             } else {
                 let offset = cpu.processing_data.args[0] as i8;
 
@@ -97,34 +86,18 @@ mod helpers {
             cpu.advance_program_counter(2);
         }
     }
-    pub(crate) fn branch_if_set(
-        cpu: &mut CPU,
-        memory_controller: &mut MemoryController,
-        bit_mask: u8,
-    ) {
-        branch_near_helper(
-            cpu,
-            memory_controller,
-            check_bits_set(cpu.processor_status, bit_mask),
-        );
+    pub(crate) fn branch_if_set(cpu: &mut CPU, bit_mask: u8) {
+        branch_near_helper(cpu, check_bits_set(cpu.processor_status, bit_mask));
     }
-    pub(crate) fn branch_if_clear(
-        cpu: &mut CPU,
-        memory_controller: &mut MemoryController,
-        bit_mask: u8,
-    ) {
-        branch_near_helper(
-            cpu,
-            memory_controller,
-            check_bits_unset(cpu.processor_status, bit_mask),
-        );
+    pub(crate) fn branch_if_clear(cpu: &mut CPU, bit_mask: u8) {
+        branch_near_helper(cpu, check_bits_unset(cpu.processor_status, bit_mask));
     }
 }
 /// Add with Carry
-pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn adc(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let is_carry_in = check_bits_set(cpu.processor_status, CARRY_MASK);
@@ -168,10 +141,10 @@ pub fn adc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// AND
-pub fn and(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn and(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -197,10 +170,10 @@ pub fn and(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Arithmetic Shift Left
-pub fn asl(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn asl(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -218,9 +191,9 @@ pub fn asl(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             Some(address) => {
                 if is8bit {
-                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                    cpu.write_byte(address.0, address.1, result as u8);
                 } else {
-                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                    cpu.cycle_write_word(address.0, address.1, result);
                 }
             }
         }
@@ -246,22 +219,22 @@ pub fn asl(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Branch Carry Clear
-pub fn bcc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_clear(cpu, memory_controller, CARRY_MASK);
+pub fn bcc(cpu: &mut CPU) {
+    branch_if_clear(cpu, CARRY_MASK);
 }
 /// Branch Carry Set
-pub fn bcs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_set(cpu, memory_controller, CARRY_MASK);
+pub fn bcs(cpu: &mut CPU) {
+    branch_if_set(cpu, CARRY_MASK);
 }
 /// Branch Zero Set
-pub fn beq(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_set(cpu, memory_controller, ZERO_MASK);
+pub fn beq(cpu: &mut CPU) {
+    branch_if_set(cpu, ZERO_MASK);
 }
 /// BIT
-pub fn bit(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn bit(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -295,33 +268,33 @@ pub fn bit(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Branch Negative Set
-pub fn bmi(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_set(cpu, memory_controller, NEGATIVE_MASK);
+pub fn bmi(cpu: &mut CPU) {
+    branch_if_set(cpu, NEGATIVE_MASK);
 }
 /// Branch Zero Clear
-pub fn bne(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_clear(cpu, memory_controller, ZERO_MASK);
+pub fn bne(cpu: &mut CPU) {
+    branch_if_clear(cpu, ZERO_MASK);
 }
 /// Branch Negative Clear
-pub fn bpl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_clear(cpu, memory_controller, NEGATIVE_MASK);
+pub fn bpl(cpu: &mut CPU) {
+    branch_if_clear(cpu, NEGATIVE_MASK);
 }
 /// Branch Always
-pub fn bra(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_near_helper(cpu, memory_controller, true)
+pub fn bra(cpu: &mut CPU) {
+    branch_near_helper(cpu, true)
 }
 /// Software Interrupt
-pub fn brk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE6, 0xFFFE);
+pub fn brk(cpu: &mut CPU) {
+    let helper_completed = helpers::stack_jump_helper(cpu, 0xFFE6, 0xFFFE);
     if helper_completed {
         let flag = if cpu.emulation_flag { Some(true) } else { None };
         cpu.update_processor_status(None, None, Some(true), Some(false), flag, None, None, None);
     }
 }
 /// Branch Always Long
-pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn brl(cpu: &mut CPU) {
     if cpu.processing_data.args.len() < 2 {
-        cpu.load_one_arg(memory_controller);
+        cpu.load_one_arg();
     } else {
         let shift = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]) as i16;
         let is_subtract = shift < 0;
@@ -339,12 +312,12 @@ pub fn brl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Branch Overflow Clear
-pub fn bvc(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_clear(cpu, memory_controller, OVERFLOW_MASK);
+pub fn bvc(cpu: &mut CPU) {
+    branch_if_clear(cpu, OVERFLOW_MASK);
 }
 /// Branch Overflow Set
-pub fn bvs(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    branch_if_set(cpu, memory_controller, OVERFLOW_MASK);
+pub fn bvs(cpu: &mut CPU) {
+    branch_if_set(cpu, OVERFLOW_MASK);
 }
 /// Clear Carry Flag
 pub fn clc(cpu: &mut CPU) {
@@ -367,10 +340,10 @@ pub fn clv(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 /// Compare with Accumulator
-pub fn cmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn cmp(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let is_carry;
@@ -401,10 +374,10 @@ pub fn cmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Compare with X
-pub fn cpx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn cpx(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let is_carry;
@@ -435,10 +408,10 @@ pub fn cpx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Compare with Y
-pub fn cpy(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn cpy(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let is_carry;
@@ -469,17 +442,17 @@ pub fn cpy(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Co-Processor Interrupt
-pub fn cop(cpu: &mut CPU, memory_controller: &mut MemoryController) {
-    let helper_completed = helpers::stack_jump_helper(cpu, memory_controller, 0xFFE4, 0xFFF4);
+pub fn cop(cpu: &mut CPU) {
+    let helper_completed = helpers::stack_jump_helper(cpu, 0xFFE4, 0xFFF4);
     if helper_completed {
         cpu.update_processor_status(None, None, Some(true), Some(false), None, None, None, None);
     }
 }
 /// Decrement
-pub fn dec(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn dec(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -498,9 +471,9 @@ pub fn dec(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             Some(address) => {
                 if is8bit {
-                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                    cpu.write_byte(address.0, address.1, result as u8);
                 } else {
-                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                    cpu.cycle_write_word(address.0, address.1, result);
                 }
             }
         }
@@ -578,10 +551,10 @@ pub fn dey(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 /// Exclusive Or
-pub fn eor(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn eor(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -610,10 +583,10 @@ pub fn eor(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Increment
-pub fn inc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn inc(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -632,9 +605,9 @@ pub fn inc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             Some(address) => {
                 if is8bit {
-                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                    cpu.write_byte(address.0, address.1, result as u8);
                 } else {
-                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                    cpu.cycle_write_word(address.0, address.1, result);
                 }
             }
         }
@@ -712,9 +685,9 @@ pub fn iny(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 /// Jump Long
-pub fn jml(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn jml(cpu: &mut CPU, address_mode: &AddressMode) {
     if let None = cpu.processing_data.address {
-        cpu.cycle_address_loading(address_mode, memory_controller);
+        cpu.cycle_address_loading(address_mode);
     }
     if let Some(address) = cpu.processing_data.address {
         cpu.program_bank = address.0;
@@ -723,9 +696,9 @@ pub fn jml(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Jump
-pub fn jmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn jmp(cpu: &mut CPU, address_mode: &AddressMode) {
     if let None = cpu.processing_data.address {
-        cpu.cycle_address_loading(address_mode, memory_controller);
+        cpu.cycle_address_loading(address_mode);
     }
     if let Some(address) = cpu.processing_data.address {
         cpu.program_counter = address.1;
@@ -733,41 +706,38 @@ pub fn jmp(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Jump to Subroutine Long
-pub fn jsl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn jsl(cpu: &mut CPU) {
     if let None = cpu.processing_data.address {
-        cpu.cycle_address_loading(&AddressMode::AbsoluteLong, memory_controller);
+        cpu.cycle_address_loading(&AddressMode::AbsoluteLong);
         return;
     }
     if cpu.processing_data.write_count < 3 {
         let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(3));
-        cpu.cycle_push_stack(
-            memory_controller,
-            &vec![cpu.program_bank, pc_bytes.1, pc_bytes.0],
-        );
+        cpu.cycle_push_stack(&vec![cpu.program_bank, pc_bytes.1, pc_bytes.0]);
         return;
     }
     cpu.program_counter = cpu.processing_data.address.unwrap().1;
     cpu.processing_state = LoadingOp;
 }
 /// Jump to Subroutine
-pub fn jsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn jsr(cpu: &mut CPU, address_mode: &AddressMode) {
     if let None = cpu.processing_data.address {
-        cpu.cycle_address_loading(address_mode, memory_controller);
+        cpu.cycle_address_loading(address_mode);
         return;
     }
     if cpu.processing_data.write_count < 2 {
         let pc_bytes = split_bytes(cpu.program_counter.wrapping_add(2));
-        cpu.cycle_push_stack(memory_controller, &vec![pc_bytes.1, pc_bytes.0]);
+        cpu.cycle_push_stack(&vec![pc_bytes.1, pc_bytes.0]);
         return;
     }
     cpu.program_counter = cpu.processing_data.address.unwrap().1;
     cpu.processing_state = LoadingOp;
 }
 /// Load Accumulator
-pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn lda(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         cpu.accumulator = operand;
@@ -788,10 +758,10 @@ pub fn lda(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Load X
-pub fn ldx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn ldx(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         cpu.x = operand;
@@ -812,10 +782,10 @@ pub fn ldx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Load Y
-pub fn ldy(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn ldy(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         cpu.y = operand;
@@ -836,10 +806,10 @@ pub fn ldy(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Logical Shift Right
-pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn lsr(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let result;
@@ -854,9 +824,9 @@ pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             Some(address) => {
                 if is8bit {
-                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                    cpu.write_byte(address.0, address.1, result as u8);
                 } else {
-                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                    cpu.cycle_write_word(address.0, address.1, result);
                 }
             }
         }
@@ -881,19 +851,18 @@ pub fn lsr(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Move Block Next
-pub fn mvn(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn mvn(cpu: &mut CPU) {
     match cpu.processing_data.op_cycles {
         2..=3 => {
-            cpu.load_one_arg(memory_controller);
+            cpu.load_one_arg();
         }
         4 => {
             cpu.processing_data.operand =
-                Some(cpu.read_byte(memory_controller, cpu.processing_data.args[1], cpu.x) as u16);
+                Some(cpu.read_byte(cpu.processing_data.args[1], cpu.x) as u16);
         }
         5 => {
             cpu.data_bank = cpu.processing_data.args[0];
             cpu.write_byte(
-                memory_controller,
                 cpu.data_bank,
                 cpu.y,
                 cpu.processing_data.operand.unwrap() as u8,
@@ -915,19 +884,18 @@ pub fn mvn(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Move Block Previous
-pub fn mvp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn mvp(cpu: &mut CPU) {
     match cpu.processing_data.op_cycles {
         2..=3 => {
-            cpu.load_one_arg(memory_controller);
+            cpu.load_one_arg();
         }
         4 => {
             cpu.processing_data.operand =
-                Some(cpu.read_byte(memory_controller, cpu.processing_data.args[1], cpu.x) as u16);
+                Some(cpu.read_byte(cpu.processing_data.args[1], cpu.x) as u16);
         }
         5 => {
             cpu.data_bank = cpu.processing_data.args[0];
             cpu.write_byte(
-                memory_controller,
                 cpu.data_bank,
                 cpu.y,
                 cpu.processing_data.operand.unwrap() as u8,
@@ -953,10 +921,10 @@ pub fn nop(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 /// Or
-pub fn ora(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn ora(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let high_bit_mask;
@@ -985,15 +953,14 @@ pub fn ora(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Push Effective Address
-pub fn pea(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn pea(cpu: &mut CPU) {
     match cpu.processing_data.address {
         None => {
-            cpu.cycle_address_loading(&AddressMode::Absolute, memory_controller);
+            cpu.cycle_address_loading(&AddressMode::Absolute);
         }
         Some(address) => {
             let address_bytes = split_bytes(address.1);
-            let write_complte =
-                cpu.cycle_push_stack(memory_controller, &vec![address_bytes.1, address_bytes.0]);
+            let write_complte = cpu.cycle_push_stack(&vec![address_bytes.1, address_bytes.0]);
             if write_complte {
                 cpu.advance_program_counter(3);
             }
@@ -1001,27 +968,24 @@ pub fn pea(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Push Effective Indirect Address
-pub fn pei(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn pei(cpu: &mut CPU) {
     match cpu.processing_data.address {
         None => {
-            cpu.cycle_address_loading(&AddressMode::DirectPageIndirect, memory_controller);
+            cpu.cycle_address_loading(&AddressMode::DirectPageIndirect);
         }
         Some(address) => match cpu.processing_data.operand {
-            None => {
-                cpu.processing_data.operand =
-                    Some(cpu.read_byte(memory_controller, address.0, address.1) as u16)
-            }
+            None => cpu.processing_data.operand = Some(cpu.read_byte(address.0, address.1) as u16),
             Some(operand) => {
-                cpu.stack_push_byte(memory_controller, operand as u8);
+                cpu.stack_push_byte(operand as u8);
                 cpu.advance_program_counter(2);
             }
         },
     }
 }
 /// Push Effective PC Relative Address
-pub fn per(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn per(cpu: &mut CPU) {
     match cpu.processing_data.operand {
-        None => cpu.cycle_operand_loading(&AddressMode::Immediate, memory_controller, false),
+        None => cpu.cycle_operand_loading(&AddressMode::Immediate, false),
         Some(operand) => {
             let op_size = 3;
             let result_addr_bytes = split_bytes(
@@ -1029,10 +993,8 @@ pub fn per(cpu: &mut CPU, memory_controller: &mut MemoryController) {
                     .wrapping_add(operand)
                     .wrapping_add(op_size),
             );
-            let push_complete = cpu.cycle_push_stack(
-                memory_controller,
-                &vec![result_addr_bytes.1, result_addr_bytes.0],
-            );
+            let push_complete =
+                cpu.cycle_push_stack(&vec![result_addr_bytes.1, result_addr_bytes.0]);
             if push_complete {
                 cpu.advance_program_counter(op_size);
             }
@@ -1040,17 +1002,17 @@ pub fn per(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Push Accumulator
-pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn pha(cpu: &mut CPU) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     let bytes = split_bytes(cpu.accumulator);
     let mut required_cycles = 3_u8;
     if is8bit {
         if cpu.processing_data.write_count < 1 {
-            cpu.stack_push_byte(memory_controller, bytes.0);
+            cpu.stack_push_byte(bytes.0);
         }
     } else {
         if cpu.processing_data.write_count < 2 {
-            cpu.cycle_push_stack(memory_controller, &vec![bytes.1, bytes.0]);
+            cpu.cycle_push_stack(&vec![bytes.1, bytes.0]);
         }
         required_cycles += 1;
     }
@@ -1059,19 +1021,19 @@ pub fn pha(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Push Data Bank
-pub fn phb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn phb(cpu: &mut CPU) {
     if cpu.processing_data.write_count < 1 {
-        cpu.stack_push_byte(memory_controller, cpu.data_bank);
+        cpu.stack_push_byte(cpu.data_bank);
     }
     if cpu.processing_data.op_cycles == 3 {
         cpu.advance_program_counter(1);
     }
 }
 /// Push Direct Page
-pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn phd(cpu: &mut CPU) {
     let bytes = split_bytes(cpu.direct_page);
     if cpu.processing_data.write_count < 2 {
-        cpu.cycle_push_stack(memory_controller, &vec![bytes.1, bytes.0]);
+        cpu.cycle_push_stack(&vec![bytes.1, bytes.0]);
     }
 
     if cpu.processing_data.op_cycles == 4 {
@@ -1079,35 +1041,35 @@ pub fn phd(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Push Program Bank
-pub fn phk(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn phk(cpu: &mut CPU) {
     if cpu.processing_data.write_count < 1 {
-        cpu.stack_push_byte(memory_controller, cpu.program_bank);
+        cpu.stack_push_byte(cpu.program_bank);
     }
     if cpu.processing_data.op_cycles == 3 {
         cpu.advance_program_counter(1);
     }
 }
 /// Push Status
-pub fn php(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn php(cpu: &mut CPU) {
     if cpu.processing_data.write_count < 1 {
-        cpu.stack_push_byte(memory_controller, cpu.processor_status);
+        cpu.stack_push_byte(cpu.processor_status);
     }
     if cpu.processing_data.op_cycles == 3 {
         cpu.advance_program_counter(1);
     }
 }
 /// Push X
-pub fn phx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn phx(cpu: &mut CPU) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let bytes = split_bytes(cpu.x);
     let mut required_cycles = 3_u8;
     if is8bit {
         if cpu.processing_data.write_count < 1 {
-            cpu.stack_push_byte(memory_controller, bytes.0);
+            cpu.stack_push_byte(bytes.0);
         }
     } else {
         if cpu.processing_data.write_count < 2 {
-            cpu.cycle_push_stack(memory_controller, &vec![bytes.1, bytes.0]);
+            cpu.cycle_push_stack(&vec![bytes.1, bytes.0]);
         }
         required_cycles += 1;
     }
@@ -1116,17 +1078,17 @@ pub fn phx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Push Y
-pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn phy(cpu: &mut CPU) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let bytes = split_bytes(cpu.y);
     let mut required_cycles = 3_u8;
     if is8bit {
         if cpu.processing_data.write_count < 1 {
-            cpu.stack_push_byte(memory_controller, bytes.0);
+            cpu.stack_push_byte(bytes.0);
         }
     } else {
         if cpu.processing_data.write_count < 2 {
-            cpu.cycle_push_stack(memory_controller, &vec![bytes.1, bytes.0]);
+            cpu.cycle_push_stack(&vec![bytes.1, bytes.0]);
         }
         required_cycles += 1;
     }
@@ -1135,12 +1097,12 @@ pub fn phy(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Pull Accumulator
-pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn pla(cpu: &mut CPU) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     let mut required_cycles = 4_u8;
     if is8bit {
         if cpu.processing_data.read_count == 0 {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.accumulator = combine_bytes(0x00, byte);
             let is_negative = Some(check_bits_set(byte, 0b1000_0000));
             let is_zero = Some(byte == 0);
@@ -1149,7 +1111,7 @@ pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     } else {
         required_cycles += 1;
         if cpu.processing_data.read_count < 2 {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.processing_data.args.push(byte);
         } else if cpu.processing_data.read_count == 2 {
             cpu.accumulator =
@@ -1164,10 +1126,10 @@ pub fn pla(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Pull Data Bank
-pub fn plb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn plb(cpu: &mut CPU) {
     let required_cycles = 4_u8;
     if cpu.processing_data.read_count == 0 {
-        let byte = cpu.stack_pop_byte(memory_controller);
+        let byte = cpu.stack_pop_byte();
         cpu.data_bank = byte;
         let is_negative = Some(check_bits_set(byte, 0b1000_0000));
         let is_zero = Some(byte == 0);
@@ -1178,10 +1140,10 @@ pub fn plb(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Pull Direct Page
-pub fn pld(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn pld(cpu: &mut CPU) {
     let required_cycles = 5_u8;
     if cpu.processing_data.read_count < 2 {
-        let byte = cpu.stack_pop_byte(memory_controller);
+        let byte = cpu.stack_pop_byte();
         cpu.processing_data.args.push(byte);
     } else if cpu.processing_data.read_count == 2 {
         cpu.direct_page = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
@@ -1194,10 +1156,10 @@ pub fn pld(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Pull Status
-pub fn plp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn plp(cpu: &mut CPU) {
     let required_cycles = 4_u8;
     if cpu.processing_data.read_count == 0 {
-        let byte = cpu.stack_pop_byte(memory_controller);
+        let byte = cpu.stack_pop_byte();
         cpu.set_processor_status(byte);
     }
     if cpu.processing_data.op_cycles == required_cycles {
@@ -1205,12 +1167,12 @@ pub fn plp(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Pull X
-pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn plx(cpu: &mut CPU) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let mut required_cycles = 4_u8;
     if is8bit {
         if cpu.processing_data.read_count == 0 {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.x = combine_bytes(0x00, byte);
             let is_negative = Some(check_bits_set(byte, 0b1000_0000));
             let is_zero = Some(byte == 0);
@@ -1219,7 +1181,7 @@ pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     } else {
         required_cycles += 1;
         if cpu.processing_data.read_count < 2 {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.processing_data.args.push(byte);
         } else if cpu.processing_data.read_count == 2 {
             cpu.x = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
@@ -1233,12 +1195,12 @@ pub fn plx(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Pull Y
-pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn ply(cpu: &mut CPU) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     let mut required_cycles = 4_u8;
     if is8bit {
         if cpu.processing_data.read_count == 0 {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.y = combine_bytes(0x00, byte);
             let is_negative = Some(check_bits_set(byte, 0b1000_0000));
             let is_zero = Some(byte == 0);
@@ -1247,7 +1209,7 @@ pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     } else {
         required_cycles += 1;
         if cpu.processing_data.read_count < 2 {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.processing_data.args.push(byte);
         } else if cpu.processing_data.read_count == 2 {
             cpu.y = combine_bytes(cpu.processing_data.args[1], cpu.processing_data.args[0]);
@@ -1261,9 +1223,9 @@ pub fn ply(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Reset Status Bits
-pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn rep(cpu: &mut CPU) {
     if cpu.processing_data.args.len() == 0 {
-        cpu.load_one_arg(memory_controller);
+        cpu.load_one_arg();
     } else {
         let arg = cpu.processing_data.args[0];
         let carry = if check_bits_set(arg, CARRY_MASK) {
@@ -1325,10 +1287,10 @@ pub fn rep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Rotate Left
-pub fn rol(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn rol(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let mut result;
@@ -1349,9 +1311,9 @@ pub fn rol(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             Some(address) => {
                 if is8bit {
-                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                    cpu.write_byte(address.0, address.1, result as u8);
                 } else {
-                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                    cpu.cycle_write_word(address.0, address.1, result);
                 }
             }
         }
@@ -1377,10 +1339,10 @@ pub fn rol(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Rotate Right
-pub fn ror(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn ror(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit);
+        cpu.cycle_operand_loading(address_mode, is8bit);
     }
     if let Some(operand) = cpu.processing_data.operand {
         let mut result;
@@ -1402,9 +1364,9 @@ pub fn ror(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             }
             Some(address) => {
                 if is8bit {
-                    cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                    cpu.write_byte(address.0, address.1, result as u8);
                 } else {
-                    cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                    cpu.cycle_write_word(address.0, address.1, result);
                 }
             }
         }
@@ -1430,18 +1392,18 @@ pub fn ror(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Return from Interrupt
-pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn rti(cpu: &mut CPU) {
     match cpu.processing_data.op_cycles {
         2 => (),
         3 => {
-            let mut status = cpu.stack_pop_byte(memory_controller);
+            let mut status = cpu.stack_pop_byte();
             if cpu.emulation_flag {
                 status = status | ACCUMULATOR_MASK | INDEX_REG_MASK;
             }
             cpu.processor_status = status;
         }
         4..=5 => {
-            let byte = cpu.stack_pop_byte(memory_controller);
+            let byte = cpu.stack_pop_byte();
             cpu.processing_data.args.push(byte);
         }
         6 => {
@@ -1452,7 +1414,7 @@ pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
             }
         }
         7 => {
-            let bank = cpu.stack_pop_byte(memory_controller);
+            let bank = cpu.stack_pop_byte();
             cpu.program_bank = bank;
             cpu.processing_state = LoadingOp;
         }
@@ -1463,20 +1425,20 @@ pub fn rti(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Return from Subroutine Long
-pub fn rtl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn rtl(cpu: &mut CPU) {
     match cpu.processing_data.op_cycles {
         2 => {
-            let low_byte = cpu.stack_pop_byte(memory_controller);
+            let low_byte = cpu.stack_pop_byte();
             cpu.processing_data.operand = Some(low_byte as u16)
         }
         3 => {
-            let high_byte = cpu.stack_pop_byte(memory_controller);
+            let high_byte = cpu.stack_pop_byte();
             let return_address =
                 combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
             cpu.processing_data.operand = Some(return_address);
         }
         4 => {
-            cpu.program_bank = cpu.stack_pop_byte(memory_controller);
+            cpu.program_bank = cpu.stack_pop_byte();
         }
         5 => {
             let next_instruction_address = cpu.processing_data.operand.unwrap().wrapping_add(1);
@@ -1490,15 +1452,15 @@ pub fn rtl(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Return from Subroutine
-pub fn rts(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn rts(cpu: &mut CPU) {
     match cpu.processing_data.op_cycles {
         // Starting at cycle 3 as documentation indicates the stack pointer changes on cycles 3 and 4
         3 => {
-            let low_byte = cpu.stack_pop_byte(memory_controller);
+            let low_byte = cpu.stack_pop_byte();
             cpu.processing_data.operand = Some(low_byte as u16)
         }
         4 => {
-            let high_byte = cpu.stack_pop_byte(memory_controller);
+            let high_byte = cpu.stack_pop_byte();
             let return_address =
                 combine_bytes(high_byte, cpu.processing_data.operand.unwrap() as u8);
             cpu.processing_data.operand = Some(return_address);
@@ -1515,10 +1477,10 @@ pub fn rts(cpu: &mut CPU, memory_controller: &mut MemoryController) {
     }
 }
 /// Subtract with Carry
-pub fn sbc(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn sbc(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     if let None = cpu.processing_data.operand {
-        cpu.cycle_operand_loading(address_mode, memory_controller, is8bit)
+        cpu.cycle_operand_loading(address_mode, is8bit)
     }
     if let Some(operand) = cpu.processing_data.operand {
         let carry_subtract_value = if check_bits_set(cpu.processor_status, CARRY_MASK) {
@@ -1589,29 +1551,24 @@ pub fn sei(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 /// Set Status Bits
-pub fn sep(cpu: &mut CPU, memory_controller: &mut MemoryController) {
+pub fn sep(cpu: &mut CPU) {
     if cpu.processing_data.args.len() == 0 {
-        cpu.load_one_arg(memory_controller);
+        cpu.load_one_arg();
     } else {
         cpu.set_processor_status(cpu.processing_data.args[0]);
         cpu.advance_program_counter(2);
     }
 }
 /// Store Accumulator
-pub fn sta(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn sta(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     match cpu.processing_data.address {
-        None => cpu.cycle_address_loading(address_mode, memory_controller),
+        None => cpu.cycle_address_loading(address_mode),
         Some(address) => {
             if is8bit {
-                cpu.write_byte(
-                    memory_controller,
-                    address.0,
-                    address.1,
-                    split_bytes(cpu.x).0,
-                );
+                cpu.write_byte(address.0, address.1, split_bytes(cpu.x).0);
             } else {
-                cpu.cycle_write_word(memory_controller, address.0, address.1, cpu.x);
+                cpu.cycle_write_word(address.0, address.1, cpu.x);
             }
             if cpu.processing_data.write_count == 2 || is8bit {
                 cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
@@ -1627,20 +1584,15 @@ pub fn stp(cpu: &mut CPU) {
     }
 }
 /// Store X
-pub fn stx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn stx(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     match cpu.processing_data.address {
-        None => cpu.cycle_address_loading(address_mode, memory_controller),
+        None => cpu.cycle_address_loading(address_mode),
         Some(address) => {
             if is8bit {
-                cpu.write_byte(
-                    memory_controller,
-                    address.0,
-                    address.1,
-                    split_bytes(cpu.x).0,
-                );
+                cpu.write_byte(address.0, address.1, split_bytes(cpu.x).0);
             } else {
-                cpu.cycle_write_word(memory_controller, address.0, address.1, cpu.x);
+                cpu.cycle_write_word(address.0, address.1, cpu.x);
             }
             if cpu.processing_data.write_count == 2 || is8bit {
                 cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
@@ -1649,20 +1601,15 @@ pub fn stx(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Store Y
-pub fn sty(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn sty(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, INDEX_REG_MASK);
     match cpu.processing_data.address {
-        None => cpu.cycle_address_loading(address_mode, memory_controller),
+        None => cpu.cycle_address_loading(address_mode),
         Some(address) => {
             if is8bit {
-                cpu.write_byte(
-                    memory_controller,
-                    address.0,
-                    address.1,
-                    split_bytes(cpu.y).0,
-                );
+                cpu.write_byte(address.0, address.1, split_bytes(cpu.y).0);
             } else {
-                cpu.cycle_write_word(memory_controller, address.0, address.1, cpu.y);
+                cpu.cycle_write_word(address.0, address.1, cpu.y);
             }
             if cpu.processing_data.write_count == 2 || is8bit {
                 cpu.advance_program_counter_with_address_mode(&address_mode, is8bit);
@@ -1671,15 +1618,15 @@ pub fn sty(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
     }
 }
 /// Store Zero
-pub fn stz(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn stz(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     match cpu.processing_data.address {
-        None => cpu.cycle_address_loading(address_mode, memory_controller),
+        None => cpu.cycle_address_loading(address_mode),
         Some(address) => {
             if is8bit {
-                cpu.write_byte(memory_controller, address.0, address.1, 0x00);
+                cpu.write_byte(address.0, address.1, 0x00);
             } else {
-                cpu.cycle_write_word(memory_controller, address.0, address.1, 0);
+                cpu.cycle_write_word(address.0, address.1, 0);
             }
             if cpu.processing_data.write_count == 2 || is8bit {
                 if split_bytes(cpu.direct_page).0 != 0 && cpu.processing_data.delay_count == 0 {
@@ -1795,10 +1742,10 @@ pub fn tdc(cpu: &mut CPU) {
     cpu.advance_program_counter(1);
 }
 /// Test and Reset Bits
-pub fn trb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn trb(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     match cpu.processing_data.operand {
-        None => cpu.cycle_operand_loading(address_mode, memory_controller, is8bit),
+        None => cpu.cycle_operand_loading(address_mode, is8bit),
         Some(operand) => {
             let accumulator_value = if is8bit {
                 cpu.accumulator & 0x00FF
@@ -1808,9 +1755,9 @@ pub fn trb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             let result = operand & (!accumulator_value);
             let address = cpu.processing_data.address.unwrap();
             if is8bit {
-                cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                cpu.write_byte(address.0, address.1, result as u8);
             } else {
-                cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                cpu.cycle_write_word(address.0, address.1, result);
             }
             if cpu.processing_data.delay_count == 0 {
                 cpu.processing_data.delay_count += 1;
@@ -1835,10 +1782,10 @@ pub fn trb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
 }
 
 /// Test and Set Bits
-pub fn tsb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode: &AddressMode) {
+pub fn tsb(cpu: &mut CPU, address_mode: &AddressMode) {
     let is8bit = check_bits_set(cpu.processor_status, ACCUMULATOR_MASK);
     match cpu.processing_data.operand {
-        None => cpu.cycle_operand_loading(address_mode, memory_controller, is8bit),
+        None => cpu.cycle_operand_loading(address_mode, is8bit),
         Some(operand) => {
             let accumulator_value = if is8bit {
                 cpu.accumulator & 0x00FF
@@ -1848,9 +1795,9 @@ pub fn tsb(cpu: &mut CPU, memory_controller: &mut MemoryController, address_mode
             let result = operand | accumulator_value;
             let address = cpu.processing_data.address.unwrap();
             if is8bit {
-                cpu.write_byte(memory_controller, address.0, address.1, result as u8);
+                cpu.write_byte(address.0, address.1, result as u8);
             } else {
-                cpu.cycle_write_word(memory_controller, address.0, address.1, result);
+                cpu.cycle_write_word(address.0, address.1, result);
             }
             if cpu.processing_data.delay_count == 0 {
                 cpu.processing_data.delay_count += 1;
@@ -2076,19 +2023,18 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset,
-        snes::cpu::{
+        bytes::check_bits_unset, snes::{cpu::{
             CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
             ProcessingState::LoadingOp,
             ops::{
                 AddressMode::{Absolute, Accumulator},
                 Operation,
             },
-        },
+        }, memory::MemoryController},
     };
 
     use super::*;
-    use std::assert_matches;
+    use std::{assert_matches, cell::RefCell, rc::Rc};
 
     fn set_accumulator8bit(cpu: &mut CPU) {
         cpu.update_processor_status(None, None, None, None, None, Some(true), None, None);
@@ -2096,25 +2042,25 @@ mod tests {
 
     #[test]
     fn adc() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = CARRY_MASK;
         cpu.accumulator = 0x1234;
-        memory_controller.write(0x00, 0x0000, 0x6D);
-        memory_controller.write(0x00, 0x0001, 0x03);
-        memory_controller.write(0x00, 0x0002, 0x00);
-        memory_controller.write(0x00, 0x0003, 0xFE);
-        memory_controller.write(0x00, 0x0004, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x6D);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0x03);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0x00);
+        memory_controller.borrow_mut().write(0x00, 0x0003, 0xFE);
+        memory_controller.borrow_mut().write(0x00, 0x0004, 0xFF);
         let expected_sum = 0x1234_u16.wrapping_add(0xFFFE).wrapping_add(1);
 
         // Absolute Mode 16 bit = 5 cycles
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::ADC(Absolute));
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2124,17 +2070,17 @@ mod tests {
     }
     #[test]
     fn asl() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = CARRY_MASK;
-        memory_controller.write(0x00, 0x0000, 0x0A);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x0A);
         cpu.accumulator = 0x89AB;
         let expected_value = 0x89AB << 1;
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::ASL(Accumulator));
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2144,18 +2090,18 @@ mod tests {
     }
     #[test]
     fn bcc() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.processor_status = !CARRY_MASK;
-        memory_controller.write(0x00, 0x0000, 0x90);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x90);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BCC);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2165,18 +2111,18 @@ mod tests {
     }
     #[test]
     fn bcs() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = CARRY_MASK;
-        memory_controller.write(0x00, 0x0000, 0xB0);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xB0);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BCS);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2185,17 +2131,17 @@ mod tests {
     }
     #[test]
     fn beq() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = !ZERO_MASK;
-        memory_controller.write(0x00, 0x0000, 0xF0);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xF0);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BEQ);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2204,18 +2150,18 @@ mod tests {
     }
     #[test]
     fn bmi() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = NEGATIVE_MASK;
-        memory_controller.write(0x00, 0x0000, 0x30);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x30);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BMI);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2224,18 +2170,18 @@ mod tests {
     }
     #[test]
     fn bne() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = !ZERO_MASK;
-        memory_controller.write(0x00, 0x0000, 0xD0);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xD0);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BNE);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2244,18 +2190,18 @@ mod tests {
     }
     #[test]
     fn bpl() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = !NEGATIVE_MASK;
-        memory_controller.write(0x00, 0x0000, 0x10);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x10);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BPL);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2264,17 +2210,17 @@ mod tests {
     }
     #[test]
     fn bra() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
-        memory_controller.write(0x00, 0x0000, 0x80);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x80);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BRA);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2286,55 +2232,49 @@ mod tests {
         let bank = 0x12_u8;
         let address = 0x3456_u16;
 
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(address);
         cpu.program_bank = bank;
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.stack_pointer = 0x0005;
-        memory_controller.write(bank, address, 0x00); // BRK
+        memory_controller.borrow_mut().write(bank, address, 0x00); // BRK
 
         // non-emulation speed 8 cycles;
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BRK);
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.processing_data.op_cycles, 8);
-        assert_eq!(cpu.stack_pop_byte(&mut memory_controller), 0);
-        assert_eq!(
-            cpu.stack_pop_byte(&mut memory_controller),
-            split_bytes(address).0 + 2
-        );
-        assert_eq!(
-            cpu.stack_pop_byte(&mut memory_controller),
-            split_bytes(address).1
-        );
-        assert_eq!(cpu.stack_pop_byte(&mut memory_controller), bank);
+        assert_eq!(cpu.stack_pop_byte(), 0);
+        assert_eq!(cpu.stack_pop_byte(), split_bytes(address).0 + 2);
+        assert_eq!(cpu.stack_pop_byte(), split_bytes(address).1);
+        assert_eq!(cpu.stack_pop_byte(), bank);
         assert_eq!(cpu.program_bank, 0x00);
         assert_eq!(cpu.program_counter, 0x0000);
         assert!(check_bits_set(cpu.processor_status, IRQ_MASK));
     }
     #[test]
     fn brl() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0x82); // BRL
-        memory_controller.write(0x00, 0x0001, 0xFC);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x82); // BRL
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFC);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BRL);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2343,18 +2283,18 @@ mod tests {
     }
     #[test]
     fn bvc() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = !OVERFLOW_MASK;
-        memory_controller.write(0x00, 0x0000, 0x50);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x50);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BVC);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2363,18 +2303,18 @@ mod tests {
     }
     #[test]
     fn bvs() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = OVERFLOW_MASK;
-        memory_controller.write(0x00, 0x0000, 0x70);
-        memory_controller.write(0x00, 0x0001, 0xFD);
-        memory_controller.write(0x00, 0x0002, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x70);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFD);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xFF);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::BVS);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2383,15 +2323,15 @@ mod tests {
     }
     #[test]
     fn clc() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0x18); // CLC
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x18); // CLC
         cpu.processor_status = CARRY_MASK;
         assert!(check_bits_set(cpu.processor_status, CARRY_MASK));
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::CLC);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2400,15 +2340,15 @@ mod tests {
     }
     #[test]
     fn cld() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0xD8); // CLD
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xD8); // CLD
         cpu.processor_status = DECIMAL_MASK;
         assert!(check_bits_set(cpu.processor_status, DECIMAL_MASK));
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::CLD);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2417,15 +2357,15 @@ mod tests {
     }
     #[test]
     fn cli() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0x58); // CLI
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x58); // CLI
         cpu.processor_status = IRQ_MASK;
         assert!(check_bits_set(cpu.processor_status, IRQ_MASK));
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::CLI);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2434,15 +2374,15 @@ mod tests {
     }
     #[test]
     fn clv() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0xB8); // CLV
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xB8); // CLV
         cpu.processor_status = OVERFLOW_MASK;
         assert!(check_bits_set(cpu.processor_status, OVERFLOW_MASK));
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::CLV);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2454,46 +2394,40 @@ mod tests {
         let bank = 0x12_u8;
         let address = 0x3456_u16;
 
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(address);
         cpu.program_bank = bank;
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.stack_pointer = 0x0005;
-        memory_controller.write(bank, address, 0x02); // COP
+        memory_controller.borrow_mut().write(bank, address, 0x02); // COP
 
         // non-emulation speed 8 cycles;
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::COP);
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_eq!(cpu.processing_data.op_cycles, 8);
-        assert_eq!(cpu.stack_pop_byte(&mut memory_controller), 0);
-        assert_eq!(
-            cpu.stack_pop_byte(&mut memory_controller),
-            split_bytes(address).0 + 2
-        );
-        assert_eq!(
-            cpu.stack_pop_byte(&mut memory_controller),
-            split_bytes(address).1
-        );
-        assert_eq!(cpu.stack_pop_byte(&mut memory_controller), bank);
+        assert_eq!(cpu.stack_pop_byte(), 0);
+        assert_eq!(cpu.stack_pop_byte(), split_bytes(address).0 + 2);
+        assert_eq!(cpu.stack_pop_byte(), split_bytes(address).1);
+        assert_eq!(cpu.stack_pop_byte(), bank);
         assert_eq!(cpu.program_bank, 0x00);
         assert_eq!(cpu.program_counter, 0x0000);
     }
     #[test]
     fn lda() {
         let op_value: u8 = 0x12;
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
 
         assert_eq!(cpu.accumulator, 0x0000);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2501,12 +2435,12 @@ mod tests {
         cpu.initialize(0);
         set_accumulator8bit(&mut cpu);
 
-        memory_controller.write(0, 0x0000, 0xA9); // LDA(Immediate)
-        memory_controller.write(0, 0x0001, op_value);
+        memory_controller.borrow_mut().write(0, 0x0000, 0xA9); // LDA(Immediate)
+        memory_controller.borrow_mut().write(0, 0x0001, op_value);
 
         // base speed 2 cycles
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         // accumulator is set to operand value
         assert_matches!(
@@ -2519,161 +2453,161 @@ mod tests {
     }
     #[test]
     fn pha() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.accumulator = 0x1234;
-        memory_controller.write(0x00, 0x0000, 0x48);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x48);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHA);
-        let low = cpu.stack_pop_byte(&mut memory_controller);
-        let high = cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte();
+        let high = cpu.stack_pop_byte();
         assert_eq!(cpu.accumulator, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
     fn phb() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.data_bank = 0x12;
-        memory_controller.write(0x00, 0x0000, 0x8B);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x8B);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHB);
-        let byte = cpu.stack_pop_byte(&mut memory_controller);
+        let byte = cpu.stack_pop_byte();
         assert_eq!(cpu.data_bank, byte);
         assert_eq!(cpu.processing_data.op_cycles, 3);
     }
     #[test]
     fn phd() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.direct_page = 0x1234;
-        memory_controller.write(0x00, 0x0000, 0x0B);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x0B);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHD);
-        let low = cpu.stack_pop_byte(&mut memory_controller);
-        let high = cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte();
+        let high = cpu.stack_pop_byte();
         assert_eq!(cpu.direct_page, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
     fn phk() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.program_bank = 0x12;
-        memory_controller.write(0x00, 0x0000, 0x4B);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x4B);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHK);
-        let byte = cpu.stack_pop_byte(&mut memory_controller);
+        let byte = cpu.stack_pop_byte();
         assert_eq!(cpu.program_bank, byte);
         assert_eq!(cpu.processing_data.op_cycles, 3);
     }
     #[test]
     fn php() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.processor_status = 0x12;
-        memory_controller.write(0x00, 0x0000, 0x08);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x08);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHP);
-        let byte = cpu.stack_pop_byte(&mut memory_controller);
+        let byte = cpu.stack_pop_byte();
         assert_eq!(cpu.processor_status, byte);
         assert_eq!(cpu.processing_data.op_cycles, 3);
     }
     #[test]
     fn phx() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.x = 0x1234;
-        memory_controller.write(0x00, 0x0000, 0xDA);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xDA);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHX);
-        let low = cpu.stack_pop_byte(&mut memory_controller);
-        let high = cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte();
+        let high = cpu.stack_pop_byte();
         assert_eq!(cpu.x, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
     fn phy() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.y = 0x1234;
-        memory_controller.write(0x00, 0x0000, 0x5A);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x5A);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PHY);
-        let low = cpu.stack_pop_byte(&mut memory_controller);
-        let high = cpu.stack_pop_byte(&mut memory_controller);
+        let low = cpu.stack_pop_byte();
+        let high = cpu.stack_pop_byte();
         assert_eq!(cpu.y, combine_bytes(high, low));
         assert_eq!(cpu.processing_data.op_cycles, 4);
     }
     #[test]
     fn pla() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.accumulator = 0x0000;
-        memory_controller.write(0x00, 0x0000, 0x68);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
-        cpu.stack_push_byte(&mut memory_controller, 0x34);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x68);
+        cpu.stack_push_byte(0x12);
+        cpu.stack_push_byte(0x34);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PLA);
@@ -2682,17 +2616,17 @@ mod tests {
     }
     #[test]
     fn plb() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.data_bank = 0x00;
-        memory_controller.write(0x00, 0x0000, 0xAB);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xAB);
+        cpu.stack_push_byte(0x12);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PLB);
@@ -2701,19 +2635,19 @@ mod tests {
     }
     #[test]
     fn pld() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.direct_page = 0x0000;
-        memory_controller.write(0x00, 0x0000, 0x2B);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
-        cpu.stack_push_byte(&mut memory_controller, 0x34);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x2B);
+        cpu.stack_push_byte(0x12);
+        cpu.stack_push_byte(0x34);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PLD);
@@ -2722,18 +2656,18 @@ mod tests {
     }
     #[test]
     fn plp() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0x00;
-        memory_controller.write(0x00, 0x0000, 0x28);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x28);
+        cpu.stack_push_byte(0x12);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PLP);
@@ -2742,21 +2676,21 @@ mod tests {
     }
     #[test]
     fn plx() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.x = 0x0000;
-        memory_controller.write(0x00, 0x0000, 0xFA);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
-        cpu.stack_push_byte(&mut memory_controller, 0x34);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xFA);
+        cpu.stack_push_byte(0x12);
+        cpu.stack_push_byte(0x34);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PLX);
@@ -2765,21 +2699,21 @@ mod tests {
     }
     #[test]
     fn ply() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
         cpu.y = 0x0000;
-        memory_controller.write(0x00, 0x0000, 0x7A);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
-        cpu.stack_push_byte(&mut memory_controller, 0x34);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x7A);
+        cpu.stack_push_byte(0x12);
+        cpu.stack_push_byte(0x34);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::PLY);
@@ -2788,16 +2722,18 @@ mod tests {
     }
     #[test]
     fn rep() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.processor_status = 0xFF;
-        memory_controller.write(0x00, 0x0000, 0xC2);
-        memory_controller.write(0x00, 0x0001, 0b0101_0101);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xC2);
+        memory_controller
+            .borrow_mut()
+            .write(0x00, 0x0001, 0b0101_0101);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::REP);
@@ -2806,23 +2742,23 @@ mod tests {
     }
     #[test]
     fn rti() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
-        memory_controller.write(0x00, 0x0000, 0x40);
-        cpu.stack_push_byte(&mut memory_controller, 0x12);
-        cpu.stack_push_byte(&mut memory_controller, 0x34);
-        cpu.stack_push_byte(&mut memory_controller, 0x56);
-        cpu.stack_push_byte(&mut memory_controller, 0xAB);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x40);
+        cpu.stack_push_byte(0x12);
+        cpu.stack_push_byte(0x34);
+        cpu.stack_push_byte(0x56);
+        cpu.stack_push_byte(0xAB);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::RTI);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2833,15 +2769,15 @@ mod tests {
     }
     #[test]
     fn sei() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
         cpu.processor_status = 0;
-        memory_controller.write(0x00, 0x0000, 0x78); // SEI
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x78); // SEI
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::SEI);
@@ -2850,26 +2786,26 @@ mod tests {
     }
     #[test]
     fn sep() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0xE2); // SEP
-        memory_controller.write(0x00, 0x0001, 0xFF);
-        memory_controller.write(0x00, 0x0002, 0xE2); // SEP
-        memory_controller.write(0x00, 0x0003, 0x00);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xE2); // SEP
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFF);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0xE2); // SEP
+        memory_controller.borrow_mut().write(0x00, 0x0003, 0x00);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::SEP);
         assert_eq!(cpu.processing_data.op_cycles, 3);
         assert_eq!(0xFF, cpu.processor_status);
 
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_state, LoadingOp);
         assert_matches!(cpu.processing_data.op, Operation::SEP);
@@ -2878,41 +2814,41 @@ mod tests {
     }
     #[test]
     fn stz() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         set_accumulator8bit(&mut cpu);
-        memory_controller.write(0x00, 0x0000, 0x9C); // STZ(Absolute)
-        memory_controller.write(0x00, 0x0001, 0x00);
-        memory_controller.write(0x00, 0x0002, 0x00);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0x9C); // STZ(Absolute)
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0x00);
+        memory_controller.borrow_mut().write(0x00, 0x0002, 0x00);
 
         // Absolute addressing speed 4 cycles
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(
             cpu.processing_data.op,
             Operation::STZ(AddressMode::Absolute)
         );
         assert_matches!(cpu.processing_state, LoadingOp);
-        assert_eq!(0, memory_controller.read_byte(0, 0));
+        assert_eq!(0, memory_controller.borrow().read_byte(0, 0));
         assert_eq!(4, cpu.processing_data.op_cycles);
     }
     #[test]
     fn xce() {
-        let mut cpu = CPU::new();
-        let mut memory_controller = MemoryController::new();
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let mut cpu = CPU::new(memory_controller.clone());
 
         cpu.initialize(0x0000);
-        memory_controller.write(0x00, 0x0000, 0xFB);
-        memory_controller.write(0x00, 0x0001, 0xFB);
+        memory_controller.borrow_mut().write(0x00, 0x0000, 0xFB);
+        memory_controller.borrow_mut().write(0x00, 0x0001, 0xFB);
         cpu.processor_status = 0b0000_0000;
 
         // exchange 1 time to set not emulation mode
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::XCE);
         assert_matches!(cpu.processing_state, LoadingOp);
@@ -2923,8 +2859,8 @@ mod tests {
         assert!(check_bits_unset(cpu.processor_status, INDEX_REG_MASK));
 
         // exchange again to enter emulation mode
-        cpu.process_cycle(&mut memory_controller);
-        cpu.process_cycle(&mut memory_controller);
+        cpu.process_cycle();
+        cpu.process_cycle();
 
         assert_matches!(cpu.processing_data.op, Operation::XCE);
         assert_matches!(cpu.processing_state, LoadingOp);

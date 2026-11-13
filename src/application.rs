@@ -196,14 +196,20 @@ impl Application {
             while y > 0xFFFF {
                 y -= 0xFFFF;
             }
-            let red = self.emulator.memory_controller.read_byte(x as u8, y as u16);
+            let red = self
+                .emulator
+                .memory_controller
+                .borrow()
+                .read_byte(x as u8, y as u16);
             let green = self
                 .emulator
                 .memory_controller
+                .borrow()
                 .read_byte(x as u8, (y as u16).wrapping_add(1));
             let blue = self
                 .emulator
                 .memory_controller
+                .borrow()
                 .read_byte(x as u8, (y as u16).wrapping_add(2));
 
             display_buffer[index as usize] =
@@ -228,7 +234,11 @@ impl Application {
             )
             .unwrap();
         let mut debug_buffer = debug_surface.buffer_mut().unwrap();
-        self.debug_display.draw_to_buffer(&mut debug_buffer, &self.emulator.get_cart_title(), &self.emulator.cpu);
+        self.debug_display.draw_to_buffer(
+            &mut debug_buffer,
+            &self.emulator.get_cart_title(),
+            &self.emulator.cpu,
+        );
         debug_buffer.present().unwrap();
     }
 }

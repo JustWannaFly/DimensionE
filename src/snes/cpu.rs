@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     bytes::{check_bits_set, combine_bytes, split_bytes},
     snes::{
@@ -55,6 +57,7 @@ pub struct CPU {
     pub emulation_flag: bool,
     pub clock_stop: bool,
     pub ready: bool,
+    memory_controller: Rc<RefCell<MemoryController>>,
     memory_access_delay: Option<u8>,
     ticks_since_cycle: u8,
     ops_executed: u32,
@@ -63,7 +66,7 @@ pub struct CPU {
     pub processing_data: ProcessingDetails,
 }
 impl CPU {
-    pub fn new() -> CPU {
+    pub fn new(memory_controller: Rc<RefCell<MemoryController>>) -> CPU {
         CPU {
             accumulator: 0x0000_0000,
             x: 0x0000_0000,
@@ -77,6 +80,7 @@ impl CPU {
             emulation_flag: true,
             clock_stop: false,
             ready: true,
+            memory_controller,
             memory_access_delay: None,
             ticks_since_cycle: BASE_CPU_SPEED,
             ops_executed: 0,
@@ -119,7 +123,7 @@ impl CPU {
         };
     }
     // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
-    pub fn tick(&mut self, memory_controller: &mut MemoryController) {
+    pub fn tick(&mut self) {
         if !self.ready {
             // TODO handle NMI or IRQ low interrupt conditions
             return;
@@ -132,11 +136,11 @@ impl CPU {
             }
             // println!("");
             self.ticks_since_cycle = 0;
-            self.process_cycle(memory_controller);
+            self.process_cycle();
         }
         // print!("|");
     }
-    pub fn process_cycle(&mut self, memory_controller: &mut MemoryController) {
+    pub fn process_cycle(&mut self) {
         match &self.processing_state {
             LoadingOp => {
                 // println!(
@@ -145,7 +149,7 @@ impl CPU {
                 // );
                 self.ops_executed = self.ops_executed.wrapping_add(1);
                 let op_code =
-                    self.read_byte(memory_controller, self.program_bank, self.program_counter);
+                    self.read_byte( self.program_bank, self.program_counter);
                 self.processing_data = ProcessingDetails {
                     op: lookup_opcode(op_code),
                     args: vec![],
@@ -164,102 +168,102 @@ impl CPU {
             }
             Processing => {
                 self.processing_data.op_cycles += 1;
-                self.cycle_execute_op(memory_controller);
+                self.cycle_execute_op();
             }
         }
     }
-    pub fn execute_op(&mut self, memory_controller: &mut MemoryController) {
+    pub fn execute_op(&mut self) {
         if matches!(self.processing_state, LoadingOp) {
-            self.process_cycle(memory_controller);
+            self.process_cycle();
         }
         while !matches!(self.processing_state, LoadingOp) {
-            self.process_cycle(memory_controller);
+            self.process_cycle();
         }
     }
-    fn cycle_execute_op(&mut self, memory_controller: &mut MemoryController) {
+    fn cycle_execute_op(&mut self) {
         // TODO add per cycle logging with disable option
         match self.processing_data.op {
-            Operation::ADC(address_mode) => op_impls::adc(self, memory_controller, &address_mode),
-            Operation::AND(address_mode) => op_impls::and(self, memory_controller, &address_mode),
-            Operation::ASL(address_mode) => op_impls::asl(self, memory_controller, &address_mode),
-            Operation::BCC => op_impls::bcc(self, memory_controller),
-            Operation::BCS => op_impls::bcs(self, memory_controller),
-            Operation::BEQ => op_impls::beq(self, memory_controller),
-            Operation::BIT(address_mode) => op_impls::bit(self, memory_controller, &address_mode),
-            Operation::BMI => op_impls::bmi(self, memory_controller),
-            Operation::BNE => op_impls::bne(self, memory_controller),
-            Operation::BPL => op_impls::bpl(self, memory_controller),
-            Operation::BRA => op_impls::bra(self, memory_controller),
-            Operation::BRK => op_impls::brk(self, memory_controller),
-            Operation::BRL => op_impls::brl(self, memory_controller),
-            Operation::BVC => op_impls::bvc(self, memory_controller),
-            Operation::BVS => op_impls::bvs(self, memory_controller),
+            Operation::ADC(address_mode) => op_impls::adc(self, &address_mode),
+            Operation::AND(address_mode) => op_impls::and(self, &address_mode),
+            Operation::ASL(address_mode) => op_impls::asl(self, &address_mode),
+            Operation::BCC => op_impls::bcc(self),
+            Operation::BCS => op_impls::bcs(self),
+            Operation::BEQ => op_impls::beq(self),
+            Operation::BIT(address_mode) => op_impls::bit(self, &address_mode),
+            Operation::BMI => op_impls::bmi(self),
+            Operation::BNE => op_impls::bne(self),
+            Operation::BPL => op_impls::bpl(self),
+            Operation::BRA => op_impls::bra(self),
+            Operation::BRK => op_impls::brk(self),
+            Operation::BRL => op_impls::brl(self),
+            Operation::BVC => op_impls::bvc(self),
+            Operation::BVS => op_impls::bvs(self),
             Operation::CLC => op_impls::clc(self),
             Operation::CLD => op_impls::cld(self),
             Operation::CLI => op_impls::cli(self),
             Operation::CLV => op_impls::clv(self),
-            Operation::CMP(address_mode) => op_impls::cmp(self, memory_controller, &address_mode),
-            Operation::CPX(address_mode) => op_impls::cpx(self, memory_controller, &address_mode),
-            Operation::CPY(address_mode) => op_impls::cpy(self, memory_controller, &address_mode),
-            Operation::COP => op_impls::cop(self, memory_controller),
-            Operation::DEC(address_mode) => op_impls::dec(self, memory_controller, &address_mode),
+            Operation::CMP(address_mode) => op_impls::cmp(self, &address_mode),
+            Operation::CPX(address_mode) => op_impls::cpx(self, &address_mode),
+            Operation::CPY(address_mode) => op_impls::cpy(self, &address_mode),
+            Operation::COP => op_impls::cop(self),
+            Operation::DEC(address_mode) => op_impls::dec(self, &address_mode),
             Operation::DEX => op_impls::dex(self),
             Operation::DEY => op_impls::dey(self),
-            Operation::EOR(address_mode) => op_impls::eor(self, memory_controller, &address_mode),
-            Operation::INC(address_mode) => op_impls::inc(self, memory_controller, &address_mode),
+            Operation::EOR(address_mode) => op_impls::eor(self, &address_mode),
+            Operation::INC(address_mode) => op_impls::inc(self, &address_mode),
             Operation::INX => op_impls::inx(self),
             Operation::INY => op_impls::iny(self),
-            Operation::JML(address_mode) => op_impls::jml(self, memory_controller, &address_mode),
-            Operation::JMP(address_mode) => op_impls::jmp(self, memory_controller, &address_mode),
-            Operation::JSL => op_impls::jsl(self, memory_controller),
-            Operation::JSR(address_mode) => op_impls::jsr(self, memory_controller, &address_mode),
-            Operation::LDA(address_mode) => op_impls::lda(self, memory_controller, &address_mode),
-            Operation::LDX(address_mode) => op_impls::ldx(self, memory_controller, &address_mode),
-            Operation::LDY(address_mode) => op_impls::ldy(self, memory_controller, &address_mode),
-            Operation::LSR(address_mode) => op_impls::lsr(self, memory_controller, &address_mode),
-            Operation::MVN => op_impls::mvn(self, memory_controller),
-            Operation::MVP => op_impls::mvp(self, memory_controller),
+            Operation::JML(address_mode) => op_impls::jml(self, &address_mode),
+            Operation::JMP(address_mode) => op_impls::jmp(self, &address_mode),
+            Operation::JSL => op_impls::jsl(self),
+            Operation::JSR(address_mode) => op_impls::jsr(self, &address_mode),
+            Operation::LDA(address_mode) => op_impls::lda(self, &address_mode),
+            Operation::LDX(address_mode) => op_impls::ldx(self, &address_mode),
+            Operation::LDY(address_mode) => op_impls::ldy(self, &address_mode),
+            Operation::LSR(address_mode) => op_impls::lsr(self, &address_mode),
+            Operation::MVN => op_impls::mvn(self),
+            Operation::MVP => op_impls::mvp(self),
             Operation::NOP => op_impls::nop(self),
-            Operation::ORA(address_mode) => op_impls::ora(self, memory_controller, &address_mode),
-            Operation::PEA => op_impls::pea(self, memory_controller),
-            Operation::PEI => op_impls::pei(self, memory_controller),
-            Operation::PER => op_impls::per(self, memory_controller),
-            Operation::PHA => op_impls::pha(self, memory_controller),
-            Operation::PHB => op_impls::phb(self, memory_controller),
-            Operation::PHD => op_impls::phd(self, memory_controller),
-            Operation::PHK => op_impls::phk(self, memory_controller),
-            Operation::PHP => op_impls::php(self, memory_controller),
-            Operation::PHX => op_impls::phx(self, memory_controller),
-            Operation::PHY => op_impls::phy(self, memory_controller),
-            Operation::PLA => op_impls::pla(self, memory_controller),
-            Operation::PLB => op_impls::plb(self, memory_controller),
-            Operation::PLD => op_impls::pld(self, memory_controller),
-            Operation::PLP => op_impls::plp(self, memory_controller),
-            Operation::PLX => op_impls::plx(self, memory_controller),
-            Operation::PLY => op_impls::ply(self, memory_controller),
-            Operation::REP => op_impls::rep(self, memory_controller),
-            Operation::ROL(address_mode) => op_impls::rol(self, memory_controller, &address_mode),
-            Operation::ROR(address_mode) => op_impls::ror(self, memory_controller, &address_mode),
-            Operation::RTI => op_impls::rti(self, memory_controller),
-            Operation::RTL => op_impls::rtl(self, memory_controller),
-            Operation::RTS => op_impls::rts(self, memory_controller),
-            Operation::SBC(address_mode) => op_impls::sbc(self, memory_controller, &address_mode),
+            Operation::ORA(address_mode) => op_impls::ora(self, &address_mode),
+            Operation::PEA => op_impls::pea(self),
+            Operation::PEI => op_impls::pei(self),
+            Operation::PER => op_impls::per(self),
+            Operation::PHA => op_impls::pha(self),
+            Operation::PHB => op_impls::phb(self),
+            Operation::PHD => op_impls::phd(self),
+            Operation::PHK => op_impls::phk(self),
+            Operation::PHP => op_impls::php(self),
+            Operation::PHX => op_impls::phx(self),
+            Operation::PHY => op_impls::phy(self),
+            Operation::PLA => op_impls::pla(self),
+            Operation::PLB => op_impls::plb(self),
+            Operation::PLD => op_impls::pld(self),
+            Operation::PLP => op_impls::plp(self),
+            Operation::PLX => op_impls::plx(self),
+            Operation::PLY => op_impls::ply(self),
+            Operation::REP => op_impls::rep(self),
+            Operation::ROL(address_mode) => op_impls::rol(self, &address_mode),
+            Operation::ROR(address_mode) => op_impls::ror(self, &address_mode),
+            Operation::RTI => op_impls::rti(self),
+            Operation::RTL => op_impls::rtl(self),
+            Operation::RTS => op_impls::rts(self),
+            Operation::SBC(address_mode) => op_impls::sbc(self, &address_mode),
             Operation::SEC => op_impls::sec(self),
             Operation::SED => op_impls::sed(self),
             Operation::SEI => op_impls::sei(self),
-            Operation::SEP => op_impls::sep(self, memory_controller),
-            Operation::STA(address_mode) => op_impls::sta(self, memory_controller, &address_mode),
+            Operation::SEP => op_impls::sep(self),
+            Operation::STA(address_mode) => op_impls::sta(self, &address_mode),
             Operation::STP => op_impls::stp(self),
-            Operation::STX(address_mode) => op_impls::stx(self, memory_controller, &address_mode),
-            Operation::STY(address_mode) => op_impls::sty(self, memory_controller, &address_mode),
-            Operation::STZ(address_mode) => op_impls::stz(self, memory_controller, &address_mode),
+            Operation::STX(address_mode) => op_impls::stx(self, &address_mode),
+            Operation::STY(address_mode) => op_impls::sty(self, &address_mode),
+            Operation::STZ(address_mode) => op_impls::stz(self, &address_mode),
             Operation::TAX => op_impls::tax(self),
             Operation::TAY => op_impls::tay(self),
             Operation::TCD => op_impls::tcd(self),
             Operation::TCS => op_impls::tcs(self),
             Operation::TDC => op_impls::tdc(self),
-            Operation::TRB(address_mode) => op_impls::trb(self, memory_controller, &address_mode),
-            Operation::TSB(address_mode) => op_impls::tsb(self, memory_controller, &address_mode),
+            Operation::TRB(address_mode) => op_impls::trb(self, &address_mode),
+            Operation::TSB(address_mode) => op_impls::tsb(self, &address_mode),
             Operation::TSC => op_impls::tsc(self),
             Operation::TSX => op_impls::tsx(self),
             Operation::TXA => op_impls::txa(self),
@@ -275,11 +279,11 @@ impl CPU {
     }
     fn write_byte(
         &mut self,
-        memory_controller: &mut MemoryController,
         bank: u8,
         address: u16,
         byte: u8,
     ) {
+        let mut memory_controller = self.memory_controller.borrow_mut();
         self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         memory_controller.cpu_bus_write(byte);
         self.processing_data.write_count += 1;
@@ -289,16 +293,14 @@ impl CPU {
     /// returns a flag indicating if the writing is complete
     fn cycle_write_word(
         &mut self,
-        memory_controller: &mut MemoryController,
         bank: u8,
         address: u16,
         word: u16,
     ) {
         if self.processing_data.write_count == 0 {
-            self.write_byte(memory_controller, bank, address, split_bytes(word).0);
+            self.write_byte(bank, address, split_bytes(word).0);
         } else {
             self.write_byte(
-                memory_controller,
                 bank,
                 address.wrapping_add(1),
                 split_bytes(word).1,
@@ -307,10 +309,10 @@ impl CPU {
     }
     fn read_byte(
         &mut self,
-        memory_controller: &mut MemoryController,
         bank: u8,
         address: u16,
     ) -> u8 {
+        let mut memory_controller = self.memory_controller.borrow_mut();
         self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         self.processing_data.read_count += 1;
         memory_controller.cpu_bus_read()
@@ -318,11 +320,10 @@ impl CPU {
     fn cycle_address_loading(
         &mut self,
         address_mode: &AddressMode,
-        memory_controller: &mut MemoryController,
     ) {
         let arg_count: u8 = get_op_size(address_mode) - 1;
         if (self.processing_data.args.len() as u8) < (arg_count) {
-            self.load_one_arg(memory_controller);
+            self.load_one_arg();
             if (self.processing_data.args.len() as u8) < (arg_count) {
                 return;
             }
@@ -340,14 +341,14 @@ impl CPU {
                 2 => {
                     let address =
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0]);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
                     let address =
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
                             .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     let resolved_addr = combine_bytes(byte, self.processing_data.args[2]);
                     self.processing_data.address = Some((self.program_bank, resolved_addr));
                     self.processing_data.read_count = 0;
@@ -357,7 +358,6 @@ impl CPU {
             AddressMode::AbsoluteIndirectLong => match self.processing_data.args.len() {
                 2 => {
                     let byte = self.read_byte(
-                        memory_controller,
                         self.program_bank,
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0]),
                     );
@@ -365,7 +365,6 @@ impl CPU {
                 }
                 3 => {
                     let byte = self.read_byte(
-                        memory_controller,
                         self.program_bank,
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
                             .wrapping_add(1),
@@ -374,7 +373,6 @@ impl CPU {
                 }
                 4 => {
                     let byte = self.read_byte(
-                        memory_controller,
                         self.program_bank,
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
                             .wrapping_add(2),
@@ -396,7 +394,7 @@ impl CPU {
                         self.processing_data.args[1],
                         self.processing_data.args[0],
                     ));
-                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    let byte = self.read_byte( self.program_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -407,7 +405,7 @@ impl CPU {
                             self.processing_data.args[0],
                         ))
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.program_bank, address);
+                    let byte = self.read_byte( self.program_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 4 => {
@@ -467,7 +465,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -475,7 +473,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -497,7 +495,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -505,7 +503,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -513,7 +511,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(combine_bytes(0, self.processing_data.args[0]))
                         .wrapping_add(2);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 4 => {
@@ -536,7 +534,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -544,7 +542,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -552,7 +550,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
 
                     let arg_address =
                         combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
@@ -578,7 +576,7 @@ impl CPU {
                         .x
                         .wrapping_add(self.direct_page)
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte( self.data_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -587,7 +585,7 @@ impl CPU {
                         .wrapping_add(self.direct_page)
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, self.data_bank, address);
+                    let byte = self.read_byte( self.data_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -609,7 +607,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -617,7 +615,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     let resolved_address =
                         combine_bytes(byte, self.processing_data.args[1]).wrapping_add(self.y);
                     self.processing_data.address = Some((self.data_bank, resolved_address));
@@ -668,7 +666,7 @@ impl CPU {
                     let address = self
                         .stack_pointer
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -676,7 +674,7 @@ impl CPU {
                         .stack_pointer
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte(memory_controller, 0x00, address);
+                    let byte = self.read_byte( 0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -697,7 +695,6 @@ impl CPU {
     fn cycle_operand_loading(
         &mut self,
         address_mode: &AddressMode,
-        memory_controller: &mut MemoryController,
         is8bit: bool,
     ) {
         match address_mode {
@@ -709,7 +706,7 @@ impl CPU {
                 }
             }
             AddressMode::Immediate => {
-                self.load_one_arg(memory_controller);
+                self.load_one_arg();
                 if is8bit {
                     self.processing_data.operand =
                         Some(combine_bytes(0, self.processing_data.args[0]));
@@ -721,10 +718,9 @@ impl CPU {
                 }
             }
             _ => match self.processing_data.address {
-                None => self.cycle_address_loading(address_mode, memory_controller),
+                None => self.cycle_address_loading(address_mode),
                 Some(address) => {
                     let byte = self.read_byte(
-                        memory_controller,
                         address.0,
                         (address.1).wrapping_add(self.processing_data.read_count as u16),
                     );
@@ -747,12 +743,12 @@ impl CPU {
             },
         }
     }
-    fn load_one_arg(&mut self, memory_controller: &mut MemoryController) {
+    fn load_one_arg(&mut self) {
         let arg_address = self
             .program_counter
             .wrapping_add(1)
             .wrapping_add(self.processing_data.args.len() as u16);
-        let arg = self.read_byte(memory_controller, self.program_bank, arg_address);
+        let arg = self.read_byte( self.program_bank, arg_address);
         self.processing_data.args.push(arg);
     }
 
@@ -877,24 +873,22 @@ impl CPU {
         self.processing_state = LoadingOp;
         self.program_counter = self.program_counter.wrapping_add(op_size);
     }
-    fn stack_push_byte(&mut self, memory_controller: &mut MemoryController, value: u8) {
-        self.write_byte(memory_controller, 0x00, self.stack_pointer, value);
+    fn stack_push_byte(&mut self, value: u8) {
+        self.write_byte( 0x00, self.stack_pointer, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1)
     }
-    fn stack_pop_byte(&mut self, memory_controller: &mut MemoryController) -> u8 {
+    fn stack_pop_byte(&mut self) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        self.read_byte(memory_controller, 0x00, self.stack_pointer)
+        self.read_byte( 0x00, self.stack_pointer)
     }
     /// Pushes bytes to the stack one byte per cycle
     ///
     /// panics if self.processing_data.write_count is >= stack_values.len()
     fn cycle_push_stack(
         &mut self,
-        memory_controller: &mut MemoryController,
         stack_values: &Vec<u8>,
     ) -> bool {
         self.stack_push_byte(
-            memory_controller,
             (*stack_values)[self.processing_data.write_count as usize],
         );
         self.processing_data.write_count == stack_values.len() as u8

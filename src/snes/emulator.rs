@@ -1,26 +1,31 @@
 pub mod emulator {
-    use crate::bytes::build_string;
+    use std::cell::RefCell;
+use std::rc::Rc;
+
+use crate::bytes::build_string;
     use crate::snes::cpu::CPU;
     use crate::snes::memory::MemoryController;
     use crate::snes::memory::cartridge::Cartridge;
     pub struct SnesEmulator {
-        pub memory_controller: MemoryController,
+        pub memory_controller: Rc<RefCell<MemoryController>>,
         pub cpu: CPU,
         pub should_run: bool,
         pub cart_loaded: bool,
     }
     impl SnesEmulator {
         pub fn new() -> SnesEmulator {
+            let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
             SnesEmulator {
-                memory_controller: MemoryController::new(),
-                cpu: CPU::new(),
+                cpu: CPU::new(memory_controller.clone()),
+                memory_controller,
                 should_run: false,
                 cart_loaded: false,
             }
         }
         pub fn load_cartridge(&mut self, cartridge: Cartridge) {
-            self.memory_controller.load_cart(cartridge);
-            self.cpu.initialize(self.memory_controller.reset_vector);
+            let mut mem_controller = self.memory_controller.borrow_mut();
+            mem_controller.load_cart(cartridge);
+            self.cpu.initialize(mem_controller.reset_vector);
             self.cart_loaded = true;
         }
         pub fn activate(&mut self) {
@@ -29,20 +34,20 @@ pub mod emulator {
             }
         }
         pub fn tick(&mut self) {
-            self.cpu.tick(&mut self.memory_controller);
+            self.cpu.tick();
             if self.cpu.clock_stop {
                 self.should_run = false
             }
         }
         pub fn cycle_cpu(&mut self) {
-            self.cpu.process_cycle(&mut self.memory_controller);
+            self.cpu.process_cycle();
         }
         pub fn execute_cpu_op(&mut self) {
-            self.cpu.execute_op(&mut self.memory_controller);
+            self.cpu.execute_op();
         }
         pub fn get_cart_title(&self) -> String {
             if self.cart_loaded {
-                let title_bytes = self.memory_controller.read(0, 0xFFC0, 21);
+                let title_bytes = self.memory_controller.borrow().read(0, 0xFFC0, 21);
                 build_string(&title_bytes)
             } else {
                 "Nothing Loaded".to_string()
