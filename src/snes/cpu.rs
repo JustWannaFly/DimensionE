@@ -148,8 +148,7 @@ impl CPU {
                 // self.processing_data.op_cycles, self.ops_executed
                 // );
                 self.ops_executed = self.ops_executed.wrapping_add(1);
-                let op_code =
-                    self.read_byte( self.program_bank, self.program_counter);
+                let op_code = self.read_byte(self.program_bank, self.program_counter);
                 self.processing_data = ProcessingDetails {
                     op: lookup_opcode(op_code),
                     args: vec![],
@@ -277,12 +276,7 @@ impl CPU {
             Operation::XCE => xce(self),
         }
     }
-    fn write_byte(
-        &mut self,
-        bank: u8,
-        address: u16,
-        byte: u8,
-    ) {
+    fn write_byte(&mut self, bank: u8, address: u16, byte: u8) {
         let mut memory_controller = self.memory_controller.borrow_mut();
         self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         memory_controller.cpu_bus_write(byte);
@@ -291,36 +285,20 @@ impl CPU {
     /// Writes a 16 bit word to memory stored in little endian format at bank:address and bank:address+1
     ///
     /// returns a flag indicating if the writing is complete
-    fn cycle_write_word(
-        &mut self,
-        bank: u8,
-        address: u16,
-        word: u16,
-    ) {
+    fn cycle_write_word(&mut self, bank: u8, address: u16, word: u16) {
         if self.processing_data.write_count == 0 {
             self.write_byte(bank, address, split_bytes(word).0);
         } else {
-            self.write_byte(
-                bank,
-                address.wrapping_add(1),
-                split_bytes(word).1,
-            );
+            self.write_byte(bank, address.wrapping_add(1), split_bytes(word).1);
         }
     }
-    fn read_byte(
-        &mut self,
-        bank: u8,
-        address: u16,
-    ) -> u8 {
+    fn read_byte(&mut self, bank: u8, address: u16) -> u8 {
         let mut memory_controller = self.memory_controller.borrow_mut();
         self.memory_access_delay = Some(memory_controller.cpu_bus_set_location(bank, address));
         self.processing_data.read_count += 1;
         memory_controller.cpu_bus_read()
     }
-    fn cycle_address_loading(
-        &mut self,
-        address_mode: &AddressMode,
-    ) {
+    fn cycle_address_loading(&mut self, address_mode: &AddressMode) {
         let arg_count: u8 = get_op_size(address_mode) - 1;
         if (self.processing_data.args.len() as u8) < (arg_count) {
             self.load_one_arg();
@@ -348,7 +326,7 @@ impl CPU {
                     let address =
                         combine_bytes(self.processing_data.args[1], self.processing_data.args[0])
                             .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     let resolved_addr = combine_bytes(byte, self.processing_data.args[2]);
                     self.processing_data.address = Some((self.program_bank, resolved_addr));
                     self.processing_data.read_count = 0;
@@ -394,7 +372,7 @@ impl CPU {
                         self.processing_data.args[1],
                         self.processing_data.args[0],
                     ));
-                    let byte = self.read_byte( self.program_bank, address);
+                    let byte = self.read_byte(self.program_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -405,7 +383,7 @@ impl CPU {
                             self.processing_data.args[0],
                         ))
                         .wrapping_add(1);
-                    let byte = self.read_byte( self.program_bank, address);
+                    let byte = self.read_byte(self.program_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 4 => {
@@ -465,7 +443,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -473,7 +451,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -495,7 +473,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -503,7 +481,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -511,7 +489,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(combine_bytes(0, self.processing_data.args[0]))
                         .wrapping_add(2);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 4 => {
@@ -534,7 +512,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -542,7 +520,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -550,7 +528,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
 
                     let arg_address =
                         combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
@@ -576,7 +554,7 @@ impl CPU {
                         .x
                         .wrapping_add(self.direct_page)
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte( self.data_bank, address);
+                    let byte = self.read_byte(self.data_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -585,7 +563,7 @@ impl CPU {
                         .wrapping_add(self.direct_page)
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( self.data_bank, address);
+                    let byte = self.read_byte(self.data_bank, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
@@ -607,7 +585,7 @@ impl CPU {
                     let address = self
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -615,7 +593,7 @@ impl CPU {
                         .direct_page
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     let resolved_address =
                         combine_bytes(byte, self.processing_data.args[1]).wrapping_add(self.y);
                     self.processing_data.address = Some((self.data_bank, resolved_address));
@@ -666,7 +644,7 @@ impl CPU {
                     let address = self
                         .stack_pointer
                         .wrapping_add(self.processing_data.args[0] as u16);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 2 => {
@@ -674,29 +652,24 @@ impl CPU {
                         .stack_pointer
                         .wrapping_add(self.processing_data.args[0] as u16)
                         .wrapping_add(1);
-                    let byte = self.read_byte( 0x00, address);
+                    let byte = self.read_byte(0x00, address);
                     self.processing_data.args.push(byte);
                 }
                 3 => {
-                    let arg_address = combine_bytes(
-                        self.processing_data.args[2],
-                        self.processing_data.args[1],
-                    );
+                    let arg_address =
+                        combine_bytes(self.processing_data.args[2], self.processing_data.args[1]);
                     let resolved_address = arg_address.wrapping_add(self.y);
                     let bank_carry = if resolved_address < arg_address { 1 } else { 0 };
 
-                    self.processing_data.address = Some((self.data_bank.wrapping_add(bank_carry), resolved_address));
+                    self.processing_data.address =
+                        Some((self.data_bank.wrapping_add(bank_carry), resolved_address));
                     self.processing_data.read_count = 0;
                 }
                 _ => panic!("{}", invalid_arg_count_error),
             },
         }
     }
-    fn cycle_operand_loading(
-        &mut self,
-        address_mode: &AddressMode,
-        is8bit: bool,
-    ) {
+    fn cycle_operand_loading(&mut self, address_mode: &AddressMode, is8bit: bool) {
         match address_mode {
             AddressMode::Accumulator => {
                 if is8bit {
@@ -748,7 +721,7 @@ impl CPU {
             .program_counter
             .wrapping_add(1)
             .wrapping_add(self.processing_data.args.len() as u16);
-        let arg = self.read_byte( self.program_bank, arg_address);
+        let arg = self.read_byte(self.program_bank, arg_address);
         self.processing_data.args.push(arg);
     }
 
@@ -874,23 +847,18 @@ impl CPU {
         self.program_counter = self.program_counter.wrapping_add(op_size);
     }
     fn stack_push_byte(&mut self, value: u8) {
-        self.write_byte( 0x00, self.stack_pointer, value);
+        self.write_byte(0x00, self.stack_pointer, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1)
     }
     fn stack_pop_byte(&mut self) -> u8 {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
-        self.read_byte( 0x00, self.stack_pointer)
+        self.read_byte(0x00, self.stack_pointer)
     }
     /// Pushes bytes to the stack one byte per cycle
     ///
     /// panics if self.processing_data.write_count is >= stack_values.len()
-    fn cycle_push_stack(
-        &mut self,
-        stack_values: &Vec<u8>,
-    ) -> bool {
-        self.stack_push_byte(
-            (*stack_values)[self.processing_data.write_count as usize],
-        );
+    fn cycle_push_stack(&mut self, stack_values: &Vec<u8>) -> bool {
+        self.stack_push_byte((*stack_values)[self.processing_data.write_count as usize]);
         self.processing_data.write_count == stack_values.len() as u8
     }
 }

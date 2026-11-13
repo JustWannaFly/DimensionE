@@ -2023,14 +2023,18 @@ pub fn xce(cpu: &mut CPU) {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytes::check_bits_unset, snes::{cpu::{
-            CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
-            ProcessingState::LoadingOp,
-            ops::{
-                AddressMode::{Absolute, Accumulator},
-                Operation,
+        bytes::check_bits_unset,
+        snes::{
+            cpu::{
+                CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
+                ProcessingState::LoadingOp,
+                ops::{
+                    AddressMode::{Absolute, Accumulator},
+                    Operation,
+                },
             },
-        }, memory::MemoryController},
+            memory::MemoryController,
+        },
     };
 
     use super::*;

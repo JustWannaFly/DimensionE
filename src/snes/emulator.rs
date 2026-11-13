@@ -1,8 +1,8 @@
 pub mod emulator {
     use std::cell::RefCell;
-use std::rc::Rc;
+    use std::rc::Rc;
 
-use crate::bytes::build_string;
+    use crate::bytes::build_string;
     use crate::snes::cpu::CPU;
     use crate::snes::memory::MemoryController;
     use crate::snes::memory::cartridge::Cartridge;

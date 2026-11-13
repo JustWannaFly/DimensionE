@@ -3,7 +3,11 @@ use std::{cmp::min, rc::Rc};
 use softbuffer::Buffer;
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
-use crate::{application::font::get_display_bits, bytes::{get_byte_as_hex, get_word_as_hex}, snes::cpu::CPU};
+use crate::{
+    application::font::get_display_bits,
+    bytes::{get_byte_as_hex, get_word_as_hex},
+    snes::cpu::CPU,
+};
 
 pub struct CpuDisplay {
     width: u32,
@@ -16,7 +20,6 @@ const TEXT_COLOR: (u8, u8, u8) = (128, 128, 128);
 const CHAR_SIZE: u8 = 8;
 
 const SCALE_MULTIPLIER: u32 = 2;
-
 
 impl CpuDisplay {
     pub fn new() -> CpuDisplay {
@@ -62,7 +65,11 @@ impl CpuDisplay {
 
         self.draw_string(&format!("{:?} ", cpu.processing_state), COL_2, 25);
         self.draw_string(&format!("{:?}              ", data.op), COL_2, 40);
-        self.draw_string(&format!("{:?}           ", &arg_strings.join(":")), COL_2, 55);
+        self.draw_string(
+            &format!("{:?}           ", &arg_strings.join(":")),
+            COL_2,
+            55,
+        );
         self.draw_string(&operand, COL_2, 70);
         self.draw_string(&get_byte_as_hex(data.op_cycles), COL_2, 85);
         self.draw_string(&get_byte_as_hex(data.write_count), COL_2, 100);
@@ -124,7 +131,12 @@ impl CpuDisplay {
             char_bits = char_bits << CHAR_SIZE;
         }
     }
-    pub fn draw_to_buffer(&mut self, buffer: &mut Buffer<OwnedDisplayHandle, Rc<Window>>, title: &str, cpu: &CPU) {
+    pub fn draw_to_buffer(
+        &mut self,
+        buffer: &mut Buffer<OwnedDisplayHandle, Rc<Window>>,
+        title: &str,
+        cpu: &CPU,
+    ) {
         if self.width != buffer.width().get() / SCALE_MULTIPLIER
             || self.height != buffer.height().get() / SCALE_MULTIPLIER
         {

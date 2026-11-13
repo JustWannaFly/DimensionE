@@ -187,7 +187,7 @@ mod cartridge_tests {
         assert_eq!(0x20_7FFF, lo_rom_lookup(0x40, 0x7FFF));
         assert_eq!(0x37_8000, lo_rom_lookup(0x6F, 0x0000));
         assert_eq!(0x37_FFFF, lo_rom_lookup(0x6F, 0x7FFF));
-        
+
         assert_eq!(0x20_0000, lo_rom_lookup(0x40, 0x8000));
         assert_eq!(0x20_7FFF, lo_rom_lookup(0x40, 0xFFFF));
         assert_eq!(0x37_8000, lo_rom_lookup(0x6F, 0x8000));
