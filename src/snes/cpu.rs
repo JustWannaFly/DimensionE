@@ -44,12 +44,11 @@ pub struct ProcessingDetails {
     pub delay_count: u8,
 }
 pub struct CPU {
-    // TODO add support for emulation mode & decimal mode
     pub accumulator: u16,
     pub x: u16,
     pub y: u16,
     pub direct_page: u16,
-    pub stack_pointer: u16, // TODO emulation mode this is 8 bits
+    pub stack_pointer: u16, // TODO emulation mode is this 8 bits
     pub processor_status: u8,
     pub data_bank: u8,
     pub program_bank: u8,
@@ -122,7 +121,6 @@ impl CPU {
             delay_count: 0,
         };
     }
-    // TODO refactor cpu to hold a reference to the memory controller so it doesn't need to be passed everywhere
     pub fn tick(&mut self) {
         if !self.ready {
             // TODO handle NMI or IRQ low interrupt conditions
