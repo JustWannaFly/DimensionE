@@ -1,4 +1,6 @@
-use crate::{bytes::combine_bytes, snes::memory::cartridge::Cartridge};
+use std::{cell::RefCell, rc::Rc};
+
+use crate::{bytes::combine_bytes, snes::{apu::Apu, memory::cartridge::Cartridge}};
 
 pub mod cartridge;
 
@@ -17,6 +19,7 @@ struct Bus {
     address: u16,
 }
 pub struct MemoryController {
+    apu: Rc<RefCell<Apu>>,
     cartridge: Option<Cartridge>,
     cart_speed: u8,
     memory_data: Vec<Vec<u8>>,
@@ -26,8 +29,9 @@ pub struct MemoryController {
 
 /// Currently mirrored data is simply stored multiple times rather than aliased.
 impl MemoryController {
-    pub fn new() -> MemoryController {
+    pub fn new(apu: Rc<RefCell<Apu>>) -> MemoryController {
         MemoryController {
+            apu,
             cartridge: None,
             cart_speed: 0,
             // TODO trim the size down to not hold rom or mirrored data
@@ -82,14 +86,10 @@ impl MemoryController {
     }
     pub fn read_byte(&self, bank: u8, address: u16) -> u8 {
         match bank {
-            0x00..0x20 => match address {
-                0x0000..0x2000 => self.memory_data[0x00][address as usize],
-                0x2000..0x8000 => self.memory_data[bank as usize][address as usize],
-                0x8000..=0xFFFF => self.read_cartridge(bank, address),
-            },
-            0x20..0x40 => match address {
-                0x0000..0x2000 => self.memory_data[0x00][address as usize],
-                0x2000..0x8000 => self.memory_data[bank as usize][address as usize],
+            0x00..0x40 => match address {
+                0x0000..0x2140 => self.memory_data[0x00][address as usize],
+                0x2140..0x2180 => self.read_apu_io(address),
+                0x2180..0x8000 => self.memory_data[0x00][address as usize],
                 0x8000..=0xFFFF => self.read_cartridge(bank, address),
             },
             0x40..0x7E => self.read_cartridge(bank, address),
@@ -107,16 +107,28 @@ impl MemoryController {
             cartridge.read_byte(bank, address).unwrap_or(0)
         } else { 0 }
     }
+    fn write_apu_io(&self, address: u16, byte: u8) {
+        let apu_base_address = 0x2140_u16;
+        let mut register = address - apu_base_address;
+        while register >= 4 {
+            register -= 4;
+        }
+        self.apu.borrow_mut().write_cpu_io(register as u8, byte);
+    }
+    fn read_apu_io(&self, address: u16) -> u8 {
+        let apu_base_address = 0x2140_u16;
+        let mut register = address - apu_base_address;
+        while register >= 4 {
+            register -= 4;
+        }
+        self.apu.borrow_mut().read_cpu_io(register as u8)
+    }
     pub fn write(&mut self, bank: u8, address: u16, byte: u8) {
         match bank {
-            0x00..0x20 => match address {
-                0x0000..0x2000 => self.memory_data[0x00][address as usize] = byte,
-                0x2000..0x8000 => self.memory_data[bank as usize][address as usize] = byte,
-                0x8000..=0xFFFF => (),
-            },
-            0x20..0x40 => match address {
-                0x0000..0x2000 => self.memory_data[0x00][address as usize] = byte,
-                0x2000..0x8000 => self.memory_data[bank as usize][address as usize] = byte,
+            0x00..0x40 => match address {
+                0x0000..0x2140 => self.memory_data[0x00][address as usize] = byte,
+                0x2140..0x2180 => self.write_apu_io(address, byte),
+                0x2180..0x8000 => self.memory_data[0x00][address as usize] = byte,
                 0x8000..=0xFFFF => (),
             },
             0x40..0x7E => (),

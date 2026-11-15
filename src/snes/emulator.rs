@@ -3,10 +3,12 @@ pub mod emulator {
     use std::rc::Rc;
 
     use crate::bytes::build_string;
-    use crate::snes::cpu::CPU;
+    use crate::snes::apu::Apu;
+use crate::snes::cpu::CPU;
     use crate::snes::memory::MemoryController;
     use crate::snes::memory::cartridge::Cartridge;
     pub struct SnesEmulator {
+        pub apu: Rc<RefCell<Apu>>,
         pub memory_controller: Rc<RefCell<MemoryController>>,
         pub cpu: CPU,
         pub should_run: bool,
@@ -14,8 +16,10 @@ pub mod emulator {
     }
     impl SnesEmulator {
         pub fn new() -> SnesEmulator {
-            let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+            let apu = Rc::new(RefCell::new(Apu::new()));
+            let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu.clone())));
             SnesEmulator {
+                apu,
                 cpu: CPU::new(memory_controller.clone()),
                 memory_controller,
                 should_run: false,

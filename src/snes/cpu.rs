@@ -722,7 +722,6 @@ impl CPU {
         let arg = self.read_byte(self.program_bank, arg_address);
         self.processing_data.args.push(arg);
     }
-
     /// Processor flags
     /// Bits: 7   6   5   4   3   2   1   0
     ///                                  |e├─── Emulation: 0 = Native Mode
