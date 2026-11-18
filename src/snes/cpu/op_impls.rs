@@ -2025,6 +2025,7 @@ mod tests {
     use crate::{
         bytes::check_bits_unset,
         snes::{
+            apu::Apu,
             cpu::{
                 CARRY_MASK, DECIMAL_MASK, INDEX_REG_MASK, IRQ_MASK, OVERFLOW_MASK,
                 ProcessingState::LoadingOp,
@@ -2046,7 +2047,8 @@ mod tests {
 
     #[test]
     fn adc() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2074,7 +2076,8 @@ mod tests {
     }
     #[test]
     fn asl() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2094,7 +2097,8 @@ mod tests {
     }
     #[test]
     fn bcc() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.processor_status = !CARRY_MASK;
@@ -2115,7 +2119,8 @@ mod tests {
     }
     #[test]
     fn bcs() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2135,7 +2140,8 @@ mod tests {
     }
     #[test]
     fn beq() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2154,7 +2160,8 @@ mod tests {
     }
     #[test]
     fn bmi() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2174,7 +2181,8 @@ mod tests {
     }
     #[test]
     fn bne() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2194,7 +2202,8 @@ mod tests {
     }
     #[test]
     fn bpl() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2214,7 +2223,8 @@ mod tests {
     }
     #[test]
     fn bra() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2236,7 +2246,8 @@ mod tests {
         let bank = 0x12_u8;
         let address = 0x3456_u16;
 
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(address);
         cpu.program_bank = bank;
@@ -2268,7 +2279,8 @@ mod tests {
     }
     #[test]
     fn brl() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         memory_controller.borrow_mut().write(0x00, 0x0000, 0x82); // BRL
@@ -2287,7 +2299,8 @@ mod tests {
     }
     #[test]
     fn bvc() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2307,7 +2320,8 @@ mod tests {
     }
     #[test]
     fn bvs() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2327,7 +2341,8 @@ mod tests {
     }
     #[test]
     fn clc() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         memory_controller.borrow_mut().write(0x00, 0x0000, 0x18); // CLC
@@ -2344,7 +2359,8 @@ mod tests {
     }
     #[test]
     fn cld() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         memory_controller.borrow_mut().write(0x00, 0x0000, 0xD8); // CLD
@@ -2361,7 +2377,8 @@ mod tests {
     }
     #[test]
     fn cli() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         memory_controller.borrow_mut().write(0x00, 0x0000, 0x58); // CLI
@@ -2378,7 +2395,8 @@ mod tests {
     }
     #[test]
     fn clv() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         memory_controller.borrow_mut().write(0x00, 0x0000, 0xB8); // CLV
@@ -2398,7 +2416,8 @@ mod tests {
         let bank = 0x12_u8;
         let address = 0x3456_u16;
 
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(address);
         cpu.program_bank = bank;
@@ -2430,7 +2449,8 @@ mod tests {
     #[test]
     fn lda() {
         let op_value: u8 = 0x12;
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
 
         assert_eq!(cpu.accumulator, 0x0000);
@@ -2457,7 +2477,8 @@ mod tests {
     }
     #[test]
     fn pha() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2479,7 +2500,8 @@ mod tests {
     }
     #[test]
     fn phb() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.data_bank = 0x12;
@@ -2497,7 +2519,8 @@ mod tests {
     }
     #[test]
     fn phd() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.direct_page = 0x1234;
@@ -2517,7 +2540,8 @@ mod tests {
     }
     #[test]
     fn phk() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.program_bank = 0x12;
@@ -2535,7 +2559,8 @@ mod tests {
     }
     #[test]
     fn php() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.processor_status = 0x12;
@@ -2553,7 +2578,8 @@ mod tests {
     }
     #[test]
     fn phx() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2575,7 +2601,8 @@ mod tests {
     }
     #[test]
     fn phy() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2597,7 +2624,8 @@ mod tests {
     }
     #[test]
     fn pla() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2620,7 +2648,8 @@ mod tests {
     }
     #[test]
     fn plb() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.data_bank = 0x00;
@@ -2639,7 +2668,8 @@ mod tests {
     }
     #[test]
     fn pld() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.direct_page = 0x0000;
@@ -2660,7 +2690,8 @@ mod tests {
     }
     #[test]
     fn plp() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2680,7 +2711,8 @@ mod tests {
     }
     #[test]
     fn plx() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2703,7 +2735,8 @@ mod tests {
     }
     #[test]
     fn ply() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2726,7 +2759,8 @@ mod tests {
     }
     #[test]
     fn rep() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.processor_status = 0xFF;
@@ -2746,7 +2780,8 @@ mod tests {
     }
     #[test]
     fn rti() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2773,7 +2808,8 @@ mod tests {
     }
     #[test]
     fn sei() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         cpu.emulation_flag = false;
@@ -2790,7 +2826,8 @@ mod tests {
     }
     #[test]
     fn sep() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         memory_controller.borrow_mut().write(0x00, 0x0000, 0xE2); // SEP
@@ -2818,7 +2855,8 @@ mod tests {
     }
     #[test]
     fn stz() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
         cpu.initialize(0x0000);
         set_accumulator8bit(&mut cpu);
@@ -2842,7 +2880,8 @@ mod tests {
     }
     #[test]
     fn xce() {
-        let memory_controller = Rc::new(RefCell::new(MemoryController::new()));
+        let apu = Rc::new(RefCell::new(Apu::new()));
+        let memory_controller = Rc::new(RefCell::new(MemoryController::new(apu)));
         let mut cpu = CPU::new(memory_controller.clone());
 
         cpu.initialize(0x0000);
