@@ -4,7 +4,7 @@ pub mod emulator {
 
     use crate::bytes::build_string;
     use crate::snes::apu::Apu;
-use crate::snes::cpu::CPU;
+    use crate::snes::cpu::CPU;
     use crate::snes::memory::MemoryController;
     use crate::snes::memory::cartridge::Cartridge;
     pub struct SnesEmulator {
@@ -42,6 +42,10 @@ use crate::snes::cpu::CPU;
             if self.cpu.clock_stop {
                 self.should_run = false
             }
+            let mut apu = self.apu.borrow_mut();
+
+            // TODO the apu needs to operate on it's own clock separate from the main cpu clock. THis is a temp hack until proper speeds are implemented
+            apu.tick();
         }
         pub fn cycle_cpu(&mut self) {
             self.cpu.process_cycle();
