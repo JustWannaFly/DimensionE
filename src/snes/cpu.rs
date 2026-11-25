@@ -28,7 +28,7 @@ const NEGATIVE_MASK: u8 = 0b1000_0000;
 const BASE_CPU_SPEED: u8 = 6;
 
 #[derive(Debug)]
-pub enum ProcessingState {
+enum ProcessingState {
     LoadingOp,
     Processing,
 }
